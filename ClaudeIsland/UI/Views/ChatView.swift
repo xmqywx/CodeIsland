@@ -233,7 +233,7 @@ struct ChatView: View {
             ProgressView()
                 .progressViewStyle(CircularProgressViewStyle(tint: .white.opacity(0.4)))
                 .scaleEffect(0.8)
-            Text("Loading messages...")
+            Text(L10n.loadingMessages)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(.white.opacity(0.4))
         }
@@ -247,7 +247,7 @@ struct ChatView: View {
             Image(systemName: "bubble.left.and.bubble.right")
                 .font(.system(size: 24))
                 .foregroundColor(.white.opacity(0.2))
-            Text("No messages yet")
+            Text(L10n.noMessages)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(.white.opacity(0.4))
         }
@@ -349,7 +349,7 @@ struct ChatView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "terminal")
                         .font(.system(size: 14, weight: .medium))
-                    Text("Go to Terminal")
+                    Text(L10n.goToTerminal)
                         .font(.system(size: 13, weight: .medium))
                 }
                 .foregroundColor(.white)
@@ -554,7 +554,7 @@ struct AssistantMessageView: View {
 // MARK: - Processing Indicator
 
 struct ProcessingIndicatorView: View {
-    private let baseTexts = ["Processing", "Working"]
+    private static let baseTexts = [L10n.processing, L10n.tr("Working", "工作中")]
     private let color = Color(red: 0.85, green: 0.47, blue: 0.34) // Claude orange
     private let baseText: String
 
@@ -564,8 +564,8 @@ struct ProcessingIndicatorView: View {
     /// Use a turnId to select text consistently per user turn
     init(turnId: String = "") {
         // Use hash of turnId to pick base text consistently for this turn
-        let index = abs(turnId.hashValue) % baseTexts.count
-        baseText = baseTexts[index]
+        let index = abs(turnId.hashValue) % Self.baseTexts.count
+        baseText = Self.baseTexts[index]
     }
 
     private var dots: String {
@@ -667,7 +667,7 @@ struct ToolCallView: View {
                     .fixedSize()
 
                 if tool.name == "Task" && !tool.subagentTools.isEmpty {
-                    let taskDesc = tool.input["description"] ?? "Running agent..."
+                    let taskDesc = tool.input["description"] ?? L10n.runningAgentDefault
                     Text("\(taskDesc) (\(tool.subagentTools.count) tools)")
                         .font(.system(size: 11))
                         .foregroundColor(textColor.opacity(0.7))
@@ -675,7 +675,7 @@ struct ToolCallView: View {
                         .truncationMode(.tail)
                 } else if tool.name == "AgentOutputTool", let desc = agentDescription {
                     let blocking = tool.input["block"] == "true"
-                    Text(blocking ? "Waiting: \(desc)" : desc)
+                    Text(blocking ? L10n.waiting(desc) : desc)
                         .font(.system(size: 11))
                         .foregroundColor(textColor.opacity(0.7))
                         .lineLimit(1)
@@ -779,7 +779,7 @@ struct SubagentToolsList: View {
         VStack(alignment: .leading, spacing: 2) {
             // Show count of older hidden tools at top
             if hiddenCount > 0 {
-                Text("+\(hiddenCount) more tool uses")
+                Text(L10n.hiddenToolCalls(hiddenCount))
                     .font(.system(size: 10))
                     .foregroundColor(.white.opacity(0.4))
             }
@@ -809,7 +809,7 @@ struct SubagentToolRow: View {
     /// Get status text using the same logic as regular tools
     private var statusText: String {
         if tool.status == .interrupted {
-            return "Interrupted"
+            return L10n.interrupted
         } else if tool.status == .running {
             return ToolStatusDisplay.running(for: tool.name, input: tool.input).text
         } else {
@@ -863,7 +863,7 @@ struct SubagentToolsSummary: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Subagent used \(tools.count) tools:")
+            Text(L10n.subagentTools(tools.count))
                 .font(.system(size: 10, weight: .medium))
                 .foregroundColor(.white.opacity(0.5))
 
@@ -942,7 +942,7 @@ struct ThinkingView: View {
 struct InterruptedMessageView: View {
     var body: some View {
         HStack {
-            Text("Interrupted")
+            Text(L10n.interrupted)
                 .font(.system(size: 13))
                 .foregroundColor(.red)
             Spacer()
@@ -967,7 +967,7 @@ struct ChatInteractivePromptBar: View {
                 Text(MCPToolFormatter.formatToolName("AskUserQuestion"))
                     .font(.system(size: 12, weight: .medium, design: .monospaced))
                     .foregroundColor(TerminalColors.amber)
-                Text("Claude Code needs your input")
+                Text(L10n.claudeNeedsInput)
                     .font(.system(size: 11))
                     .foregroundColor(.white.opacity(0.5))
                     .lineLimit(1)
@@ -984,7 +984,7 @@ struct ChatInteractivePromptBar: View {
                 HStack(spacing: 4) {
                     Image(systemName: "terminal")
                         .font(.system(size: 11, weight: .medium))
-                    Text("Terminal")
+                    Text(L10n.terminal)
                         .font(.system(size: 13, weight: .medium))
                 }
                 .foregroundColor(.black)
@@ -1090,7 +1090,7 @@ struct ChatApprovalBar: View {
                 Circle()
                     .fill(Color(red: 1.0, green: 0.6, blue: 0.0))
                     .frame(width: 8, height: 8)
-                Text("Permission Request")
+                Text(L10n.permissionRequest)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(Color(red: 1.0, green: 0.7, blue: 0.2))
             }
@@ -1162,7 +1162,7 @@ struct ChatApprovalBar: View {
                     onDeny()
                 } label: {
                     HStack(spacing: 4) {
-                        Text("Deny")
+                        Text(L10n.deny)
                             .font(.system(size: 13, weight: .medium))
                         Text("\u{2318}N")
                             .font(.system(size: 11, weight: .regular))
@@ -1185,7 +1185,7 @@ struct ChatApprovalBar: View {
                     onApprove()
                 } label: {
                     HStack(spacing: 4) {
-                        Text("Allow")
+                        Text(L10n.allow)
                             .font(.system(size: 13, weight: .bold))
                         Text("\u{2318}Y")
                             .font(.system(size: 11, weight: .regular))
@@ -1263,7 +1263,7 @@ struct NewMessagesIndicator: View {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 10, weight: .bold))
 
-                Text(count == 1 ? "1 new message" : "\(count) new messages")
+                Text(L10n.newMessages(count))
                     .font(.system(size: 12, weight: .medium))
             }
             .foregroundColor(.white)

@@ -26,7 +26,7 @@ struct NotchMenuView: View {
             // Back button
             MenuRow(
                 icon: "chevron.left",
-                label: "Back"
+                label: L10n.back
             ) {
                 viewModel.toggleMenu()
             }
@@ -41,7 +41,7 @@ struct NotchMenuView: View {
 
             MenuToggleRow(
                 icon: "folder",
-                label: "Group by Project",
+                label: L10n.groupByProject,
                 isOn: showGrouped
             ) {
                 showGrouped.toggle()
@@ -62,7 +62,7 @@ struct NotchMenuView: View {
             // System settings
             MenuToggleRow(
                 icon: "power",
-                label: "Launch at Login",
+                label: L10n.launchAtLogin,
                 isOn: launchAtLogin
             ) {
                 do {
@@ -80,7 +80,7 @@ struct NotchMenuView: View {
 
             MenuToggleRow(
                 icon: "arrow.triangle.2.circlepath",
-                label: "Hooks",
+                label: L10n.hooks,
                 isOn: hooksInstalled
             ) {
                 if hooksInstalled {
@@ -103,7 +103,7 @@ struct NotchMenuView: View {
 
             MenuRow(
                 icon: "xmark.circle",
-                label: "Quit",
+                label: L10n.quit,
                 isDestructive: true
             ) {
                 NSApplication.shared.terminate(nil)
@@ -145,7 +145,7 @@ struct VersionRow: View {
                 .foregroundColor(.white.opacity(0.7))
                 .frame(width: 16)
 
-            Text("Version")
+            Text(L10n.version)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(.white.opacity(0.7))
 
@@ -181,7 +181,7 @@ struct AccessibilityRow: View {
                 .foregroundColor(textColor)
                 .frame(width: 16)
 
-            Text("Accessibility")
+            Text(L10n.accessibility)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(textColor)
 
@@ -192,12 +192,12 @@ struct AccessibilityRow: View {
                     .fill(TerminalColors.green)
                     .frame(width: 6, height: 6)
 
-                Text("On")
+                Text(L10n.enabled)
                     .font(.system(size: 11))
                     .foregroundColor(.white.opacity(0.4))
             } else {
                 Button(action: openAccessibilitySettings) {
-                    Text("Enable")
+                    Text(L10n.enable)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.black)
                         .padding(.horizontal, 10)
@@ -300,7 +300,7 @@ struct MenuToggleRow: View {
                     .fill(isOn ? TerminalColors.green : Color.white.opacity(0.3))
                     .frame(width: 6, height: 6)
 
-                Text(isOn ? "On" : "Off")
+                Text(isOn ? L10n.on : L10n.off)
                     .font(.system(size: 11))
                     .foregroundColor(.white.opacity(0.4))
             }

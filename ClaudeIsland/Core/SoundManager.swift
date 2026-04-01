@@ -25,16 +25,7 @@ enum SoundEvent: String, CaseIterable {
 
     /// Human-readable label for display in settings UI
     var displayName: String {
-        switch self {
-        case .sessionStart: return "Session Start"
-        case .processingBegins: return "Processing Begins"
-        case .needsApproval: return "Needs Approval"
-        case .approvalGranted: return "Approval Granted"
-        case .approvalDenied: return "Approval Denied"
-        case .sessionComplete: return "Session Complete"
-        case .error: return "Error"
-        case .compacting: return "Context Compacting"
-        }
+        L10n.soundEventName(self.rawValue)
     }
 
     /// Default enabled state for each event

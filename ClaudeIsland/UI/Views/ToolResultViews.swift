@@ -138,7 +138,7 @@ struct EditResultContent: View {
             }
 
             if result.userModified {
-                Text("(User modified)")
+                Text(L10n.userModified)
                     .font(.system(size: 10))
                     .foregroundColor(.orange.opacity(0.7))
             }
@@ -155,7 +155,7 @@ struct WriteResultContent: View {
         VStack(alignment: .leading, spacing: 6) {
             // Action and filename
             HStack(spacing: 4) {
-                Text(result.type == .create ? "Created" : "Wrote")
+                Text(result.type == .create ? L10n.created : L10n.written)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.white.opacity(0.5))
                 Text(result.filename)
@@ -185,7 +185,7 @@ struct BashResultContent: View {
                 HStack(spacing: 4) {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.system(size: 10))
-                    Text("Background task: \(bgId)")
+                    Text(L10n.backgroundTask(bgId))
                         .font(.system(size: 10, design: .monospaced))
                 }
                 .foregroundColor(.blue.opacity(0.7))
@@ -206,7 +206,7 @@ struct BashResultContent: View {
             // Stderr (shown in red)
             if !result.stderr.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("stderr:")
+                    Text(L10n.stderrLabel)
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.red.opacity(0.7))
                     Text(result.stderr)
@@ -218,7 +218,7 @@ struct BashResultContent: View {
 
             // Empty state
             if !result.hasOutput && result.backgroundTaskId == nil && result.returnCodeInterpretation == nil {
-                Text("(No content)")
+                Text(L10n.noContent)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.white.opacity(0.3))
             }
@@ -237,7 +237,7 @@ struct GrepResultContent: View {
             case .filesWithMatches:
                 // Show file list
                 if result.filenames.isEmpty {
-                    Text("No matches found")
+                    Text(L10n.noMatches)
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(.white.opacity(0.3))
                 } else {
@@ -249,13 +249,13 @@ struct GrepResultContent: View {
                 if let content = result.content, !content.isEmpty {
                     CodePreview(content: content, maxLines: 15)
                 } else {
-                    Text("No matches found")
+                    Text(L10n.noMatches)
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(.white.opacity(0.3))
                 }
 
             case .count:
-                Text("\(result.numFiles) files with matches")
+                Text(L10n.filesMatched(result.numFiles))
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.white.opacity(0.5))
             }
@@ -271,14 +271,14 @@ struct GlobResultContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if result.filenames.isEmpty {
-                Text("No files found")
+                Text(L10n.noFiles)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.white.opacity(0.3))
             } else {
                 FileListView(files: result.filenames, limit: 10)
 
                 if result.truncated {
-                    Text("... and more (truncated)")
+                    Text(L10n.moreTruncated)
                         .font(.system(size: 10))
                         .foregroundColor(.white.opacity(0.3))
                 }
@@ -349,7 +349,7 @@ struct TaskResultContent: View {
                 }
 
                 if let tools = result.totalToolUseCount {
-                    Text("\(tools) tools")
+                    Text(L10n.tools(tools))
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(.white.opacity(0.4))
                 }
@@ -429,7 +429,7 @@ struct WebSearchResultContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if result.results.isEmpty {
-                Text("No results found")
+                Text(L10n.noResults)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.white.opacity(0.3))
             } else {
@@ -450,7 +450,7 @@ struct WebSearchResultContent: View {
                 }
 
                 if result.results.count > 5 {
-                    Text("... and \(result.results.count - 5) more results")
+                    Text(L10n.moreResults(result.results.count - 5))
                         .font(.system(size: 10))
                         .foregroundColor(.white.opacity(0.3))
                 }
@@ -498,12 +498,12 @@ struct BashOutputResultContent: View {
         VStack(alignment: .leading, spacing: 4) {
             // Status
             HStack(spacing: 6) {
-                Text("Status: \(result.status)")
+                Text(L10n.status(result.status))
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(.white.opacity(0.5))
 
                 if let exitCode = result.exitCode {
-                    Text("Exit: \(exitCode)")
+                    Text(L10n.exitCode(exitCode))
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(exitCode == 0 ? .green.opacity(0.6) : .red.opacity(0.6))
                 }
@@ -535,7 +535,7 @@ struct KillShellResultContent: View {
                 .font(.system(size: 11))
                 .foregroundColor(.red.opacity(0.6))
 
-            Text(result.message.isEmpty ? "Shell \(result.shellId) terminated" : result.message)
+            Text(result.message.isEmpty ? L10n.shellKilled(result.shellId) : result.message)
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(.white.opacity(0.5))
         }
@@ -610,7 +610,7 @@ struct GenericResultContent: View {
         if let content = result.rawContent, !content.isEmpty {
             GenericTextContent(text: content)
         } else {
-            Text("Completed")
+            Text(L10n.completed)
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(.white.opacity(0.3))
         }
@@ -695,7 +695,7 @@ struct FileCodeView: View {
 
             // Bottom overflow indicator
             if hasMoreAfter {
-                Text("... (\(lines.count - maxLines) more lines)")
+                Text(L10n.moreLines(lines.count - maxLines))
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(.white.opacity(0.3))
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -753,7 +753,7 @@ struct CodePreview: View {
             }
 
             if hasMore {
-                Text("... (\(lines.count - maxLines) more lines)")
+                Text(L10n.moreLines(lines.count - maxLines))
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(.white.opacity(0.3))
                     .padding(.top, 2)
@@ -781,7 +781,7 @@ struct FileListView: View {
             }
 
             if files.count > limit {
-                Text("... and \(files.count - limit) more files")
+                Text(L10n.moreFiles(files.count - limit))
                     .font(.system(size: 10))
                     .foregroundColor(.white.opacity(0.3))
             }
@@ -807,7 +807,7 @@ struct DiffView: View {
                     }
 
                     if patch.lines.count > 10 {
-                        Text("... (\(patch.lines.count - 10) more lines)")
+                        Text(L10n.moreLines(patch.lines.count - 10))
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundColor(.white.opacity(0.3))
                     }
@@ -815,7 +815,7 @@ struct DiffView: View {
             }
 
             if patches.count > 3 {
-                Text("... and \(patches.count - 3) more hunks")
+                Text(L10n.moreHunks(patches.count - 3))
                     .font(.system(size: 10))
                     .foregroundColor(.white.opacity(0.3))
             }

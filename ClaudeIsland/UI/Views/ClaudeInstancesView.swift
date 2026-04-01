@@ -28,7 +28,7 @@ struct ClaudeInstancesView: View {
                 VStack(spacing: 0) {
                     // Top bar: session count left, gear right
                     HStack {
-                        Text("\(sessionMonitor.instances.count) sessions")
+                        Text("\(sessionMonitor.instances.count) \(L10n.sessions)")
                             .font(.system(size: 10))
                             .foregroundColor(.white.opacity(0.25))
                         Spacer()
@@ -137,7 +137,7 @@ struct ClaudeInstancesView: View {
                     showBuddyCard = false
                 }
             } label: {
-                Text("Back")
+                Text(L10n.back)
                     .font(.system(size: 9, weight: .medium))
                     .foregroundColor(.white.opacity(0.4))
                     .padding(.horizontal, 14)
@@ -174,11 +174,11 @@ struct ClaudeInstancesView: View {
 
     private var emptyState: some View {
         VStack(spacing: 8) {
-            Text("No sessions")
+            Text(L10n.noSessions)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(.white.opacity(0.4))
 
-            Text("Run claude in terminal")
+            Text(L10n.runClaude)
                 .font(.system(size: 11))
                 .foregroundColor(.white.opacity(0.25))
         }
@@ -467,7 +467,7 @@ struct InstanceRow: View {
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundColor(TerminalColors.amber.opacity(0.9))
                 if isInteractiveTool {
-                    Text("Needs your input")
+                    Text(L10n.needsInput)
                         .font(.system(size: 11))
                         .foregroundColor(.white.opacity(0.5))
                         .lineLimit(1)
@@ -496,7 +496,7 @@ struct InstanceRow: View {
                 }
             case "user":
                 HStack(spacing: 4) {
-                    Text("You:")
+                    Text(L10n.you)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.white.opacity(0.5))
                     if let msg = session.lastMessage {
@@ -528,14 +528,14 @@ struct InstanceRow: View {
     private var statusLine: some View {
         switch session.phase {
         case .processing:
-            Text("Working...")
+            Text(L10n.working)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(TerminalColors.cyan)
         case .waitingForApproval:
             if isInteractiveTool {
                 // Interactive tools: show approval buttons inline on the status line
                 HStack(spacing: 6) {
-                    Text("Needs approval")
+                    Text(L10n.needsApproval)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(TerminalColors.amber)
                     Spacer()
@@ -547,7 +547,7 @@ struct InstanceRow: View {
                 }
             } else {
                 HStack(spacing: 6) {
-                    Text("Needs approval")
+                    Text(L10n.needsApproval)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(TerminalColors.amber)
                     Spacer()
@@ -562,17 +562,17 @@ struct InstanceRow: View {
             Button {
                 onFocus()
             } label: {
-                Text("Done \u{2014} click to jump")
+                Text(L10n.doneJump)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(TerminalColors.green)
             }
             .buttonStyle(.plain)
         case .compacting:
-            Text("Compacting...")
+            Text(L10n.compacting)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(Self.purple)
         case .idle, .ended:
-            Text("Idle")
+            Text(L10n.idle)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(.white.opacity(0.25))
         }
@@ -603,7 +603,7 @@ struct ProjectGroupHeader: View {
                     .foregroundColor(.white.opacity(0.8))
 
                 if group.activeCount > 0 {
-                    Text("\(group.activeCount) active")
+                    Text("\(group.activeCount) \(L10n.active)")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.white.opacity(0.6))
                         .padding(.horizontal, 6)
@@ -613,7 +613,7 @@ struct ProjectGroupHeader: View {
                                 .fill(Color.white.opacity(0.1))
                         )
                 } else if group.isArchivable {
-                    Text("archived")
+                    Text(L10n.archived)
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.white.opacity(0.35))
                         .padding(.horizontal, 6)
@@ -662,7 +662,7 @@ struct InlineApprovalButtons: View {
             Button {
                 onReject()
             } label: {
-                Text("Deny")
+                Text(L10n.deny)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.white.opacity(0.6))
                     .padding(.horizontal, 10)
@@ -677,7 +677,7 @@ struct InlineApprovalButtons: View {
             Button {
                 onApprove()
             } label: {
-                Text("Allow")
+                Text(L10n.allow)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.black)
                     .padding(.horizontal, 10)
@@ -744,7 +744,7 @@ struct CompactTerminalButton: View {
             HStack(spacing: 2) {
                 Image(systemName: "terminal")
                     .font(.system(size: 8, weight: .medium))
-                Text("Go to Terminal")
+                Text(L10n.goToTerminal)
                     .font(.system(size: 10, weight: .medium))
             }
             .foregroundColor(isEnabled ? .white.opacity(0.9) : .white.opacity(0.3))
@@ -772,7 +772,7 @@ struct TerminalButton: View {
             HStack(spacing: 3) {
                 Image(systemName: "terminal")
                     .font(.system(size: 11, weight: .medium))
-                Text("Terminal")
+                Text(L10n.terminal)
                     .font(.system(size: 11, weight: .medium))
             }
             .foregroundColor(isEnabled ? .black : .white.opacity(0.4))
