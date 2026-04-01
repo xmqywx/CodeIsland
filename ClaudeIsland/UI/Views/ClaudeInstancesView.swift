@@ -26,8 +26,8 @@ struct ClaudeInstancesView: View {
                 // Top bar: session count left, gear right
                 HStack {
                     Text("\(sessionMonitor.instances.count) sessions")
-                        .font(.system(size: 8))
-                        .foregroundColor(.white.opacity(0.2))
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.25))
                     Spacer()
                     Button {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -35,9 +35,9 @@ struct ClaudeInstancesView: View {
                         }
                     } label: {
                         Image(systemName: "gearshape")
-                            .font(.system(size: 10))
-                            .foregroundColor(.white.opacity(0.3))
-                            .frame(width: 22, height: 22)
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.35))
+                            .frame(width: 24, height: 24)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -63,7 +63,7 @@ struct ClaudeInstancesView: View {
                 .foregroundColor(.white.opacity(0.4))
 
             Text("Run claude in terminal")
-                .font(.system(size: 9))
+                .font(.system(size: 11))
                 .foregroundColor(.white.opacity(0.25))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -291,41 +291,47 @@ struct InstanceRow: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
                 // Active: cat animation, Idle: glow dot
                 if session.phase == .processing || session.phase == .compacting || session.phase.isWaitingForApproval {
                     PixelCharacterView(state: session.phase.animationState)
-                        .scaleEffect(0.22)
-                        .frame(width: 12, height: 12)
+                        .scaleEffect(0.28)
+                        .frame(width: 16, height: 16)
+                        .padding(.top, 2)
                 } else {
                     Circle()
                         .fill(accentColor)
-                        .frame(width: 6, height: 6)
+                        .frame(width: 8, height: 8)
                         .shadow(color: accentColor.opacity(0.6), radius: 4)
                         .shadow(color: accentColor.opacity(0.3), radius: 8)
+                        .padding(.top, 5)
                 }
 
                 // Content
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(session.displayTitle)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(titleColor)
-                        .lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    // Title row
+                    HStack {
+                        Text(session.displayTitle)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(titleColor)
+                            .lineLimit(1)
 
+                        Spacer(minLength: 0)
+
+                        Text(durationText)
+                            .font(.system(size: 10))
+                            .foregroundColor(.white.opacity(0.3))
+                    }
+
+                    // Subtitle
                     subtitleView
                 }
-
-                Spacer(minLength: 0)
-
-                Text(durationText)
-                    .font(.system(size: 9))
-                    .foregroundColor(.white.opacity(0.3))
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 5)
+            .padding(.vertical, 7)
             .contentShape(Rectangle())
-            .background(isHovered ? Color.white.opacity(0.03) : Color.clear)
-            .cornerRadius(6)
+            .background(isHovered ? Color.white.opacity(0.04) : Color.clear)
+            .cornerRadius(8)
         }
         .onHover { isHovered = $0 }
     }
@@ -337,16 +343,16 @@ struct InstanceRow: View {
         if isWaitingForApproval, let toolName = session.pendingToolName {
             HStack(spacing: 4) {
                 Text(MCPToolFormatter.formatToolName(toolName))
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundColor(TerminalColors.amber.opacity(0.9))
                 if isInteractiveTool {
                     Text("Needs your input")
-                        .font(.system(size: 9))
+                        .font(.system(size: 11))
                         .foregroundColor(.white.opacity(0.5))
                         .lineLimit(1)
                 } else if let input = session.pendingToolInput {
                     Text(input)
-                        .font(.system(size: 9))
+                        .font(.system(size: 11))
                         .foregroundColor(.white.opacity(0.5))
                         .lineLimit(1)
                 }
@@ -357,12 +363,12 @@ struct InstanceRow: View {
                 HStack(spacing: 4) {
                     if let toolName = session.lastToolName {
                         Text(MCPToolFormatter.formatToolName(toolName))
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
                             .foregroundColor(.white.opacity(0.5))
                     }
                     if let input = session.lastMessage {
                         Text(input)
-                            .font(.system(size: 9))
+                            .font(.system(size: 11))
                             .foregroundColor(.white.opacity(0.4))
                             .lineLimit(1)
                     }
@@ -370,11 +376,11 @@ struct InstanceRow: View {
             case "user":
                 HStack(spacing: 4) {
                     Text("You:")
-                        .font(.system(size: 9, weight: .medium))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.white.opacity(0.5))
                     if let msg = session.lastMessage {
                         Text(msg)
-                            .font(.system(size: 9))
+                            .font(.system(size: 11))
                             .foregroundColor(.white.opacity(0.4))
                             .lineLimit(1)
                     }
@@ -382,14 +388,14 @@ struct InstanceRow: View {
             default:
                 if let msg = session.lastMessage {
                     Text(msg)
-                        .font(.system(size: 9))
+                        .font(.system(size: 11))
                         .foregroundColor(.white.opacity(0.4))
                         .lineLimit(1)
                 }
             }
         } else if let lastMsg = session.lastMessage {
             Text(lastMsg)
-                .font(.system(size: 9))
+                .font(.system(size: 11))
                 .foregroundColor(.white.opacity(0.4))
                 .lineLimit(1)
         }
@@ -402,14 +408,14 @@ struct InstanceRow: View {
         switch session.phase {
         case .processing:
             Text("Working...")
-                .font(.system(size: 9, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundColor(TerminalColors.cyan)
         case .waitingForApproval:
             if isInteractiveTool {
                 // Interactive tools: show approval buttons inline on the status line
                 HStack(spacing: 6) {
                     Text("Needs approval")
-                        .font(.system(size: 9, weight: .medium))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(TerminalColors.amber)
                     Spacer()
                     InlineApprovalButtons(
@@ -421,7 +427,7 @@ struct InstanceRow: View {
             } else {
                 HStack(spacing: 6) {
                     Text("Needs approval")
-                        .font(.system(size: 9, weight: .medium))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(TerminalColors.amber)
                     Spacer()
                     InlineApprovalButtons(
@@ -436,17 +442,17 @@ struct InstanceRow: View {
                 onFocus()
             } label: {
                 Text("Done \u{2014} click to jump")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(TerminalColors.green)
             }
             .buttonStyle(.plain)
         case .compacting:
             Text("Compacting...")
-                .font(.system(size: 9, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundColor(Self.purple)
         case .idle, .ended:
             Text("Idle")
-                .font(.system(size: 9, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundColor(.white.opacity(0.25))
         }
     }
@@ -467,7 +473,7 @@ struct ProjectGroupHeader: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.white.opacity(0.4))
                     .frame(width: 12)
 
@@ -536,7 +542,7 @@ struct InlineApprovalButtons: View {
                 onReject()
             } label: {
                 Text("Deny")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.white.opacity(0.6))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
@@ -551,7 +557,7 @@ struct InlineApprovalButtons: View {
                 onApprove()
             } label: {
                 Text("Allow")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.black)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
@@ -589,7 +595,7 @@ struct IconButton: View {
             action()
         } label: {
             Image(systemName: icon)
-                .font(.system(size: 9, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundColor(isHovered ? .white.opacity(0.8) : .white.opacity(0.4))
                 .frame(width: 24, height: 24)
                 .background(
@@ -644,9 +650,9 @@ struct TerminalButton: View {
         } label: {
             HStack(spacing: 3) {
                 Image(systemName: "terminal")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                 Text("Terminal")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
             }
             .foregroundColor(isEnabled ? .black : .white.opacity(0.4))
             .padding(.horizontal, 10)

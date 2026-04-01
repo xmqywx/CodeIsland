@@ -546,22 +546,36 @@ struct CollapsedNotchContent: View {
     }
 
     @State private var pulsePhase: Bool = false
+    @ObservedObject private var buddyReader = BuddyReader.shared
 
     var body: some View {
         HStack(spacing: 6) {
-            // Left: pixel character with gentle bob
-            PixelCharacterView(state: mostUrgentState)
-                .scaleEffect(0.28)
-                .frame(width: 14, height: 14)
-                .offset(y: pulsePhase ? -1 : 1)
-                .matchedGeometryEffect(id: "crab", in: activityNamespace, isSource: true)
+            // Left: buddy emoji or pixel character
+            if let buddy = buddyReader.buddy {
+                Text(buddy.species.emoji)
+                    .font(.system(size: 12))
+                    .offset(y: pulsePhase ? -1 : 1)
+                    .matchedGeometryEffect(id: "crab", in: activityNamespace, isSource: true)
+            } else {
+                PixelCharacterView(state: mostUrgentState)
+                    .scaleEffect(0.28)
+                    .frame(width: 14, height: 14)
+                    .offset(y: pulsePhase ? -1 : 1)
+                    .matchedGeometryEffect(id: "crab", in: activityNamespace, isSource: true)
+            }
 
-            // Center: project name (white) + status (colored)
+            // Center: buddy name or project name + status
             if let parts = activityTextParts {
                 HStack(spacing: 3) {
-                    Text(parts.project)
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.8))
+                    if let buddy = buddyReader.buddy {
+                        Text(buddy.name)
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.8))
+                    } else {
+                        Text(parts.project)
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.8))
+                    }
                     Text(parts.status)
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .foregroundStyle(statusGradient)
