@@ -257,11 +257,7 @@ class BuddyReader: ObservableObject {
         let seed = UInt32(hash & 0xFFFFFFFF)
         var rng = Mulberry32(seed: seed)
 
-        // Species
-        let speciesAll: [BuddySpecies] = [.duck, .goose, .blob, .cat, .dragon, .octopus, .owl, .penguin, .turtle, .snail, .ghost, .axolotl, .capybara, .cactus, .robot, .rabbit, .mushroom, .chonk]
-        let species = speciesAll[Int(floor(rng.next() * Double(speciesAll.count)))]
-
-        // Rarity
+        // Rarity FIRST (must match Claude Code's rollFrom order)
         let rarityWeights: [(BuddyRarity, Int)] = [(.common, 60), (.uncommon, 25), (.rare, 10), (.epic, 4), (.legendary, 1)]
         var roll = rng.next() * 100.0
         var rarity: BuddyRarity = .common
@@ -269,6 +265,10 @@ class BuddyReader: ObservableObject {
             roll -= Double(w)
             if roll < 0 { rarity = r; break }
         }
+
+        // Species SECOND
+        let speciesAll: [BuddySpecies] = [.duck, .goose, .blob, .cat, .dragon, .octopus, .owl, .penguin, .turtle, .snail, .ghost, .axolotl, .capybara, .cactus, .robot, .rabbit, .mushroom, .chonk]
+        let species = speciesAll[Int(floor(rng.next() * Double(speciesAll.count)))]
 
         // Eye
         let eyes = ["·", "✦", "×", "◉", "@", "°"]
