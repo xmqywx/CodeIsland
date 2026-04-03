@@ -26,66 +26,24 @@ struct ClaudeInstancesView: View {
         } else {
             ZStack(alignment: .bottomTrailing) {
                 VStack(spacing: 0) {
-                    // Top bar: rate limit + session info left, settings right
-                    HStack(spacing: 0) {
-                        // Rate limit display
-                        HStack(spacing: 4) {
-                            if let info = rateLimitMonitor.rateLimitInfo {
-                                Text(info.displayText)
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundColor(info.color)
-                                    .help(info.tooltip)
-                            }
-
-                            // Refresh button with tooltip
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 9))
-                                .foregroundColor(.white.opacity(rateLimitMonitor.isLoading ? 0.5 : 0.25))
-                                .rotationEffect(.degrees(rateLimitMonitor.isLoading ? 360 : 0))
-                                .animation(rateLimitMonitor.isLoading ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: rateLimitMonitor.isLoading)
-                                .frame(width: 16, height: 16)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    Task { await rateLimitMonitor.refresh() }
-                                }
-                                .help("刷新 Claude 用量")
-                        }
-
-                        Text("·")
+                    // Top bar: session count + settings
+                    HStack {
+                        Text("\(sessionMonitor.instances.count) \(L10n.sessions)")
                             .font(.system(size: 11))
-                            .foregroundColor(.white.opacity(0.12))
-                            .padding(.horizontal, 4)
-
-                        // Session count + total time
-                        HStack(spacing: 3) {
-                            Text("\(sessionMonitor.instances.count) \(L10n.sessions)")
-                                .font(.system(size: 11))
-                                .foregroundColor(.white.opacity(0.25))
-
-                            let totalMinutes = totalSessionMinutes
-                            if totalMinutes > 0 {
-                                Text(formatTotalTime(totalMinutes))
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.white.opacity(0.2))
-                            }
-                        }
-
+                            .foregroundColor(.white.opacity(0.25))
                         Spacer()
-
-                        // Settings button
                         Button {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                 viewModel.toggleMenu()
                             }
                         } label: {
                             Image(systemName: "gearshape")
-                                .font(.system(size: 12))
+                                .font(.system(size: 10))
                                 .foregroundColor(.white.opacity(0.35))
                                 .frame(width: 24, height: 24)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .help("设置")
                     }
                     .padding(.horizontal, 10)
                     .padding(.top, 6)
@@ -99,20 +57,27 @@ struct ClaudeInstancesView: View {
                     }
                 }
 
-                // Buddy floating button — bottom right, ASCII art sprite
-                if let buddy = buddyReader.buddy {
-                    Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            showBuddyCard.toggle()
+                // Bottom right: buddy + usage stats (hidden when buddy card is open)
+                if !showBuddyCard {
+                    VStack(alignment: .trailing, spacing: 4) {
+                        if let buddy = buddyReader.buddy {
+                            Button {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    showBuddyCard.toggle()
+                                }
+                            } label: {
+                                BuddyASCIIView(buddy: buddy)
+                                    .frame(width: 80, height: 50)
+                                    .scaleEffect(0.7)
+                            }
+                            .buttonStyle(.plain)
                         }
-                    } label: {
-                        BuddyASCIIView(buddy: buddy)
-                            .frame(width: 80, height: 50)
-                            .scaleEffect(0.7)
+
+                        UsageStatsBar(monitor: rateLimitMonitor, totalMinutes: totalSessionMinutes)
                     }
-                    .buttonStyle(.plain)
                     .padding(.trailing, 4)
                     .padding(.bottom, 2)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
             }
         }
@@ -144,15 +109,9 @@ struct ClaudeInstancesView: View {
 
             // Left-right layout: ASCII art | stats
             HStack(alignment: .top, spacing: 8) {
-                // Left: ASCII sprite
-                VStack(spacing: 2) {
-                    BuddyASCIIView(buddy: buddy)
-                        .frame(height: 65)
-                    Text(buddy.name)
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.white)
-                }
-                .frame(width: 100)
+                // Left: ASCII sprite (name shown by BuddyASCIIView)
+                BuddyASCIIView(buddy: buddy)
+                    .frame(width: 100, height: 65)
 
                 // Right: stats + personality
                 VStack(alignment: .leading, spacing: 4) {
@@ -1040,5 +999,164 @@ struct SubagentListView: View {
             }
         }
         .padding(.horizontal, 8)
+    }
+}
+
+// MARK: - Usage Stats Bar
+
+struct UsageStatsBar: View {
+    @ObservedObject var monitor: RateLimitMonitor
+    let totalMinutes: Int
+
+    @State private var appear = false
+    @State private var pulsePhase = false
+
+    private var fiveHourPct: CGFloat {
+        CGFloat(monitor.rateLimitInfo?.fiveHourPercent ?? 0) / 100.0
+    }
+
+    private var sevenDayPct: CGFloat {
+        CGFloat(monitor.rateLimitInfo?.sevenDayPercent ?? 0) / 100.0
+    }
+
+    private func barColor(_ pct: Int) -> Color {
+        if pct >= 90 { return Color(red: 0.94, green: 0.27, blue: 0.27) }
+        if pct >= 70 { return Color(red: 1.0, green: 0.6, blue: 0.2) }
+        return Color(red: 0.29, green: 0.87, blue: 0.5)
+    }
+
+    private func formatTime(_ minutes: Int) -> String {
+        if minutes >= 60 {
+            let h = minutes / 60
+            let m = minutes % 60
+            return m > 0 ? "\(h)h\(m)m" : "\(h)h"
+        }
+        return "\(minutes)m"
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let info = monitor.rateLimitInfo {
+                // 5h gauge
+                usageGauge(
+                    pct: info.fiveHourPercent ?? 0,
+                    label: "5h",
+                    resetAt: info.fiveHourResetAt
+                )
+
+                // 7d gauge (if > 0)
+                if let sevenDay = info.sevenDayPercent, sevenDay > 0 {
+                    usageGauge(
+                        pct: sevenDay,
+                        label: "7d",
+                        resetAt: info.sevenDayResetAt
+                    )
+                }
+
+                // Divider
+                Rectangle()
+                    .fill(.white.opacity(0.08))
+                    .frame(width: 1, height: 14)
+
+                // Session time
+                if totalMinutes > 0 {
+                    Text(formatTime(totalMinutes))
+                        .font(.system(size: 8, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.3))
+                }
+
+                // Refresh
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 7))
+                    .foregroundColor(.white.opacity(monitor.isLoading ? 0.5 : 0.2))
+                    .rotationEffect(.degrees(monitor.isLoading ? 360 : 0))
+                    .animation(monitor.isLoading ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: monitor.isLoading)
+                    .contentShape(Rectangle().size(width: 16, height: 16))
+                    .onTapGesture {
+                        Task { await monitor.refresh() }
+                    }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(.black.opacity(0.3))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(.white.opacity(0.06), lineWidth: 0.5)
+                )
+        )
+        .opacity(appear ? 1 : 0)
+        .offset(y: appear ? 0 : 5)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.4).delay(0.3)) {
+                appear = true
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func usageGauge(pct: Int, label: String, resetAt: Date?) -> some View {
+        let color = barColor(pct)
+        VStack(alignment: .leading, spacing: 2) {
+            // Label + percentage
+            HStack(spacing: 3) {
+                Text(label)
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundColor(.white.opacity(0.3))
+                Text("\(pct)%")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundColor(color)
+                if let resetAt = resetAt {
+                    let remaining = resetAt.timeIntervalSinceNow
+                    if remaining > 0 {
+                        Text(formatResetShort(remaining))
+                            .font(.system(size: 7))
+                            .foregroundColor(.white.opacity(0.2))
+                    }
+                }
+            }
+
+            // Progress bar
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(.white.opacity(0.06))
+                    .frame(width: 50, height: 3)
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(color)
+                    .frame(width: max(2, 50 * CGFloat(pct) / 100), height: 3)
+                    .shadow(color: color.opacity(0.4), radius: 2)
+            }
+        }
+        .help(usageTooltip(pct: pct, label: label, resetAt: resetAt))
+    }
+
+    private func formatResetShort(_ seconds: TimeInterval) -> String {
+        if seconds < 3600 { return "\(Int(seconds / 60))m" }
+        if seconds < 86400 {
+            let h = Int(seconds / 3600)
+            let m = Int(seconds.truncatingRemainder(dividingBy: 3600) / 60)
+            return m > 0 ? "\(h)h\(m)m" : "\(h)h"
+        }
+        return "\(Int(seconds / 86400))d"
+    }
+
+    private func usageTooltip(pct: Int, label: String, resetAt: Date?) -> String {
+        let window = label == "7d" ? "7天" : "5小时"
+        guard let resetAt = resetAt else { return "\(window)窗口: \(pct)%" }
+        let remaining = resetAt.timeIntervalSinceNow
+        if remaining <= 0 { return "\(window)窗口: \(pct)% (已重置)" }
+        let timeStr: String
+        if remaining < 3600 {
+            timeStr = "\(Int(remaining / 60))分钟"
+        } else if remaining < 86400 {
+            let h = Int(remaining / 3600)
+            let m = Int(remaining.truncatingRemainder(dividingBy: 3600) / 60)
+            timeStr = m > 0 ? "\(h)小时\(m)分钟" : "\(h)小时"
+        } else {
+            timeStr = "\(Int(remaining / 86400))天"
+        }
+        return "\(window)窗口: \(pct)% (\(timeStr)后重置)"
     }
 }

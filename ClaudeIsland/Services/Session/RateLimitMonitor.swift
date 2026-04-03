@@ -20,19 +20,19 @@ struct RateLimitDisplayInfo: Equatable {
     var displayText: String {
         var parts: [String] = []
 
-        // 5h window
+        // 5h: just percentage + reset time, no label
         if let pct = fiveHourPercent {
             let resetStr = formatRemaining(fiveHourResetAt)
-            parts.append("5h \(pct)%\(resetStr.isEmpty ? "" : " \(resetStr)")")
+            parts.append("\(pct)%\(resetStr.isEmpty ? "" : " \(resetStr)")")
         }
 
-        // 7d window (show when >= 5%)
+        // 7d: show when >= 5%
         if let pct = sevenDayPercent, pct >= 5 {
             let resetStr = formatRemaining(sevenDayResetAt)
-            parts.append("7d \(pct)%\(resetStr.isEmpty ? "" : " \(resetStr)")")
+            parts.append("\(pct)%\(resetStr.isEmpty ? "" : " \(resetStr)")")
         }
 
-        return parts.isEmpty ? "Usage --" : parts.joined(separator: " | ")
+        return parts.isEmpty ? "--" : parts.joined(separator: "|\(parts.count > 1 ? "" : "")")
     }
 
     var tooltip: String {
