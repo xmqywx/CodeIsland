@@ -119,7 +119,68 @@ struct NotchMenuView: View {
                 .background(Color.white.opacity(0.08))
                 .padding(.vertical, 4)
 
-            // Quit before version — so it's higher up and clickable
+            // Star & Feedback
+            HStack(spacing: 8) {
+                // Star button
+                Button {
+                    NSWorkspace.shared.open(URL(string: "https://github.com/xmqywx/CodeIsland")!)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.yellow)
+                        Text("Star")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.yellow.opacity(0.1))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .strokeBorder(Color.yellow.opacity(0.2), lineWidth: 0.5)
+                            )
+                    )
+                }
+                .buttonStyle(.plain)
+
+                // Feedback button
+                Button {
+                    NSWorkspace.shared.open(URL(string: "https://github.com/xmqywx/CodeIsland/issues")!)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "bubble.left.and.bubble.right")
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.5))
+                        Text(L10n.tr("Feedback", "反馈"))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.white.opacity(0.06))
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: .infinity)
+
+            Text(L10n.tr("Actively maintained · Your star keeps us going!", "持续更新中 · 你的 Star 是我们最大的动力！"))
+                .font(.system(size: 9))
+                .foregroundColor(.white.opacity(0.2))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 2)
+
+            Divider()
+                .background(Color.white.opacity(0.08))
+                .padding(.vertical, 4)
+
+            // Quit
             MenuRow(
                 icon: "xmark.circle",
                 label: L10n.quit,

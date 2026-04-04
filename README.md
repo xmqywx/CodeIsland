@@ -12,10 +12,16 @@ This is a passion project built purely out of personal interest. It is **free an
 
 English | [中文](README.zh-CN.md)
 
+[![GitHub stars](https://img.shields.io/github/stars/xmqywx/CodeIsland?style=social)](https://github.com/xmqywx/CodeIsland/stargazers)
+
 [![Website](https://img.shields.io/badge/website-xmqywx.github.io%2FCodeIsland-7c3aed?style=flat-square)](https://xmqywx.github.io/CodeIsland/)
 [![Release](https://img.shields.io/github/v/release/xmqywx/CodeIsland?style=flat-square&color=4ADE80)](https://github.com/xmqywx/CodeIsland/releases)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=flat-square&logo=apple)](https://github.com/xmqywx/CodeIsland/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green?style=flat-square)](LICENSE.md)
+
+**If you find this useful, please give it a star! It keeps us motivated to improve.**
+
+**如果觉得好用，请点个 Star 支持一下！这是我们持续更新的最大动力。**
 
 </div>
 
