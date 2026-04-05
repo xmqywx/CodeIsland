@@ -31,6 +31,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         screenObserver = ScreenObserver { [weak self] in
             self?.handleScreenChange()
         }
+
+        // Initialize CodeLight sync (connects to server if configured)
+        _ = SyncManager.shared
     }
 
     private func handleScreenChange() {

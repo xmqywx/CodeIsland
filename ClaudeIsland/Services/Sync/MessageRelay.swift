@@ -21,12 +21,17 @@ final class MessageRelay {
     private var aliveTimers: [String: Timer] = [:]
     private var knownSessionIds = Set<String>()
 
+    /// Track how many chat items we've already synced per session
+    private var syncedItemCounts: [String: Int] = [:]
+
+    /// Map local sessionId → server session id
+    private var serverSessionIds: [String: String] = [:]
+
     init(connection: ServerConnection) {
         self.connection = connection
     }
 
     /// Start relaying session events to the server.
-    /// Call after server connection is established.
     func startRelaying() {
         SessionStore.shared.sessionsPublisher
             .receive(on: DispatchQueue.main)
@@ -54,18 +59,23 @@ final class MessageRelay {
             // New session detected — create on server
             if !knownSessionIds.contains(sessionId) {
                 knownSessionIds.insert(sessionId)
+                syncedItemCounts[sessionId] = 0
                 Task { await createServerSession(session) }
                 startAliveTimer(for: sessionId)
             }
 
-            // Relay status based on phase
-            relaySessionStatus(session)
+            // Sync new chat items
+            syncNewMessages(session)
 
             // Handle ended sessions
             if session.phase == .ended {
-                connection.sendSessionEnd(sessionId: sessionId)
+                if let sId = serverSessionIds[sessionId] {
+                    connection.sendSessionEnd(sessionId: sId)
+                }
                 stopAliveTimer(for: sessionId)
                 knownSessionIds.remove(sessionId)
+                syncedItemCounts.removeValue(forKey: sessionId)
+                serverSessionIds.removeValue(forKey: sessionId)
             }
         }
 
@@ -75,37 +85,83 @@ final class MessageRelay {
             connection.sendSessionEnd(sessionId: id)
             stopAliveTimer(for: id)
             knownSessionIds.remove(id)
+            syncedItemCounts.removeValue(forKey: id)
         }
     }
 
-    private func relaySessionStatus(_ session: SessionState) {
-        // Map SessionPhase to string for server
-        let phaseString: String
-        switch session.phase {
-        case .idle: phaseString = "idle"
-        case .processing: phaseString = "thinking"
-        case .waitingForApproval: phaseString = "waiting_approval"
-        case .waitingForInput: phaseString = "waiting_input"
-        case .compacting: phaseString = "compacting"
-        case .ended: phaseString = "ended"
+    // MARK: - Message Sync
+
+    private func syncNewMessages(_ session: SessionState) {
+        let localId = session.sessionId
+        let syncedCount = syncedItemCounts[localId] ?? 0
+        let items = session.chatItems
+
+        // Need the server session ID (created via createServerSession)
+        guard let serverId = serverSessionIds[localId] else {
+            Self.logger.debug("No server session ID yet for \(localId.prefix(8))...")
+            return
         }
 
-        // Get current tool name from in-progress tools
-        let currentToolName = session.toolTracker.inProgress.values.first?.name ?? ""
+        let isConn = self.connection.isConnected
+        Self.logger.info("syncNewMessages: \(localId.prefix(8))... items=\(items.count) synced=\(syncedCount) connected=\(isConn) serverId=\(serverId.prefix(8))...")
 
-        // Build metadata from current session state
-        let metadata: [String: Any] = [
-            "path": session.cwd,
-            "title": session.projectName,
-            "phase": phaseString,
-            "toolName": currentToolName,
+        guard items.count > syncedCount else { return }
+        guard connection.isConnected else {
+            Self.logger.warning("Skipping sync: not connected")
+            return
+        }
+
+        // Only sync new items
+        let newItems = Array(items.dropFirst(syncedCount))
+        syncedItemCounts[localId] = items.count
+
+        for item in newItems {
+            let content = serializeChatItem(item)
+            connection.sendMessage(
+                sessionId: serverId,  // Use server's session ID, not local
+                content: content,
+                localId: item.id
+            )
+        }
+
+        Self.logger.info("Synced \(newItems.count) new messages for \(localId.prefix(8))...")
+    }
+
+    /// Serialize a ChatHistoryItem to a JSON string for the server.
+    private func serializeChatItem(_ item: ChatHistoryItem) -> String {
+        var dict: [String: Any] = [
+            "id": item.id,
+            "timestamp": item.timestamp.timeIntervalSince1970,
         ]
 
-        guard let metadataJson = try? JSONSerialization.data(withJSONObject: metadata),
-              let metadataString = String(data: metadataJson, encoding: .utf8) else { return }
+        switch item.type {
+        case .user(let text):
+            dict["type"] = "user"
+            dict["text"] = text
+        case .assistant(let text):
+            dict["type"] = "assistant"
+            dict["text"] = text
+        case .thinking(let text):
+            dict["type"] = "thinking"
+            dict["text"] = text
+        case .toolCall(let tool):
+            dict["type"] = "tool"
+            dict["toolName"] = tool.name
+            dict["toolInput"] = tool.input
+            dict["toolStatus"] = String(describing: tool.status)
+            if let result = tool.result {
+                dict["toolResult"] = String(result.prefix(2000)) // Truncate large results
+            }
+        case .interrupted:
+            dict["type"] = "interrupted"
+            dict["text"] = "[Interrupted by user]"
+        }
 
-        // Send as metadata update (version 0 = always overwrite for now)
-        connection.updateMetadata(sessionId: session.sessionId, metadata: metadataString, expectedVersion: 0)
+        guard let data = try? JSONSerialization.data(withJSONObject: dict),
+              let json = String(data: data, encoding: .utf8) else {
+            return "{\"type\":\"unknown\"}"
+        }
+        return json
     }
 
     // MARK: - Server Session Management
@@ -120,11 +176,14 @@ final class MessageRelay {
               let metadataString = String(data: metadataJson, encoding: .utf8) else { return }
 
         do {
-            _ = try await connection.createSession(
+            let result = try await connection.createSession(
                 tag: session.sessionId,
                 metadata: metadataString
             )
-            Self.logger.info("Created server session for \(session.sessionId)")
+            if let serverId = result["id"] as? String {
+                serverSessionIds[session.sessionId] = serverId
+                Self.logger.info("Created server session \(serverId) for \(session.sessionId)")
+            }
         } catch {
             Self.logger.error("Failed to create server session: \(error)")
         }
@@ -135,7 +194,8 @@ final class MessageRelay {
     private func startAliveTimer(for sessionId: String) {
         stopAliveTimer(for: sessionId)
         let timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            self?.connection.sendAlive(sessionId: sessionId)
+            guard let serverId = self?.serverSessionIds[sessionId] else { return }
+            self?.connection.sendAlive(sessionId: serverId)
         }
         aliveTimers[sessionId] = timer
     }

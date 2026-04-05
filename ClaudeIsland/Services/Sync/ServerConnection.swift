@@ -57,6 +57,8 @@ final class ServerConnection: ObservableObject {
     func authenticate() async throws {
         state = .authenticating
 
+        let _ = try keyManager.getOrCreateIdentityKey()
+
         let challenge = UUID().uuidString
         let challengeData = Data(challenge.utf8)
         let signature = try keyManager.sign(challengeData)
@@ -111,6 +113,7 @@ final class ServerConnection: ObservableObject {
             .reconnectWait(1),
             .reconnectWaitMax(5),
             .forceWebsockets(true),
+            .extraHeaders(["Authorization": "Bearer \(token)"]),
         ])
 
         socket = manager?.defaultSocket

@@ -39,6 +39,10 @@ final class SyncManager: ObservableObject {
     }
 
     private init() {
+        // Default server URL if not configured
+        if serverUrl == nil {
+            UserDefaults.standard.set("https://island.wdao.chat", forKey: "codelight-server-url")
+        }
         // Auto-connect on startup if configured
         if let url = serverUrl, !url.isEmpty {
             Task { await connectToServer(url: url) }
@@ -57,14 +61,28 @@ final class SyncManager: ObservableObject {
             try await conn.authenticate()
             conn.connect()
 
-            // Start relaying session events
+            // Wait for socket to actually connect before starting relay
             let relay = MessageRelay(connection: conn)
-            relay.startRelaying()
             self.relay = relay
-
-            // Start RPC executor
             let rpc = RPCExecutor()
             self.rpcExecutor = rpc
+
+            // Delay relay start to give socket time to connect
+            Task { @MainActor in
+                // Wait up to 5 seconds for socket connection
+                for _ in 0..<50 {
+                    if conn.isConnected { break }
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                }
+
+                if conn.isConnected {
+                    relay.startRelaying()
+                    Self.logger.info("Relay started after socket connected")
+                } else {
+                    Self.logger.warning("Socket did not connect in time, starting relay anyway")
+                    relay.startRelaying()
+                }
+            }
 
             isEnabled = true
             connectionState = .connected
