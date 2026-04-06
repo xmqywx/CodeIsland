@@ -91,6 +91,14 @@ const translations = {
   "demo.jumpTitle": { zh: "跳转到对应终端", en: "Jump to the right terminal" },
   "demo.jumpSub": { zh: "一键跳到对应的终端标签页和分屏。", en: "One click to the exact tab and split pane in cmux or iTerm2." },
 
+  // Community
+  "community.join": { zh: "加入社区", en: "Join Community" },
+  "community.title": { zh: "加入 CodeIsland 用户群", en: "Join CodeIsland Community" },
+  "community.subtitle": { zh: "扫码加入微信群，第一时间获取更新、提 bug、交流使用技巧", en: "Scan to join our WeChat group — get updates, report bugs, share tips" },
+  "community.qrNote": { zh: "微信扫一扫加入", en: "Scan with WeChat to join" },
+  "community.qrExpiry": { zh: "二维码每 7 天更新，如已失效请添加开发者微信：carey_314", en: "QR code refreshes every 7 days. If expired, add the developer on WeChat: carey_314" },
+  "community.close": { zh: "关闭", en: "Close" },
+
   // Footer
   "footer.madeWith": { zh: "Made with", en: "Made with" },
 } as const
