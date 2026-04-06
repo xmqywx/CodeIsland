@@ -120,7 +120,8 @@ final class MessageRelay {
         case .waitingForApproval(let ctx):
             return ("waiting_approval", ctx.toolName)
         case .waitingForInput:
-            return ("idle", nil)
+            // "Waiting for user input" = Claude just finished successfully
+            return ("ended", nil)
         case .compacting:
             return ("thinking", "compacting")
         case .ended:
