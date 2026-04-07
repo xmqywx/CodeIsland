@@ -46,7 +46,7 @@ actor TerminalJumper {
         }
 
         if lower.contains("cmux") {
-            if await jumpViaCmux(cwd: cwd, sessionId: session.sessionId) { return true }
+            if await jumpViaCmux(cwd: cwd, sessionId: session.sessionId, tty: session.tty) { return true }
         }
 
         if lower.contains("ghostty") {
@@ -75,7 +75,7 @@ actor TerminalJumper {
 
         // 3. If terminal app unknown OR all specific strategies failed,
         //    try common AppleScript terminals in order
-        if await jumpViaCmux(cwd: cwd, sessionId: session.sessionId) { return true }
+        if await jumpViaCmux(cwd: cwd, sessionId: session.sessionId, tty: session.tty) { return true }
         if await jumpViaGhostty(cwd: cwd) { return true }
         if await jumpViaiTerm2(cwd: cwd, pid: pid, tty: session.tty) { return true }
         if await jumpViaTerminalApp(cwd: cwd, pid: pid) { return true }
@@ -215,18 +215,37 @@ actor TerminalJumper {
         return await runAppleScript(script)
     }
 
-    // MARK: - cmux (CLI)
+    // MARK: - cmux (CLI — cross-window support via tree --all)
 
-    private func jumpViaCmux(cwd: String, sessionId: String? = nil) async -> Bool {
-        let cmuxPath = "/Applications/cmux.app/Contents/Resources/bin/cmux"
-        guard FileManager.default.isExecutableFile(atPath: cmuxPath) else { return false }
+    private func jumpViaCmux(cwd: String, sessionId: String? = nil, tty: String? = nil) async -> Bool {
+        guard CmuxTreeParser.isAvailable else { return false }
 
-        // Use cmux find-window --content --select to search and jump in one command
         let dirName = URL(fileURLWithPath: cwd).lastPathComponent
 
+        // Strategy 1: TTY match (most reliable — OS-level, not renameable)
+        if let tty = tty, !tty.isEmpty {
+            if let location = CmuxTreeParser.findByTTY(tty, dirName: dirName) {
+                DebugLogger.log("Jump", "cmux TTY match: \(location.surfaceRef) in \(location.windowRef)")
+                if CmuxTreeParser.jump(to: location) {
+                    await bringCmuxToFront()
+                    return true
+                }
+            }
+        }
+
+        // Strategy 2: tree --all title match (session ID or dir name)
+        if let location = CmuxTreeParser.findByContent(sessionId: sessionId, dirName: dirName) {
+            DebugLogger.log("Jump", "cmux content match: \(location.surfaceRef) in \(location.windowRef)")
+            if CmuxTreeParser.jump(to: location) {
+                await bringCmuxToFront()
+                return true
+            }
+        }
+
+        // Strategy 3: find-window in current window (legacy fallback)
         let process = Process()
         let pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: cmuxPath)
+        process.executableURL = URL(fileURLWithPath: CmuxTreeParser.cmuxPath)
         process.arguments = ["find-window", "--content", "--select", dirName]
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
@@ -239,7 +258,7 @@ actor TerminalJumper {
             if process.terminationStatus == 0,
                let output = String(data: data, encoding: .utf8),
                output.contains("workspace:") {
-                DebugLogger.log("Jump", "cmux matched: \(output.prefix(60))")
+                DebugLogger.log("Jump", "cmux find-window matched: \(output.prefix(60))")
                 await bringCmuxToFront()
                 return true
             }

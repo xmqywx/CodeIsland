@@ -831,9 +831,8 @@ struct InstanceRow: View {
             }
         }
 
-        // cmux
-        let cmuxPath = "/Applications/cmux.app/Contents/Resources/bin/cmux"
-        guard FileManager.default.isExecutableFile(atPath: cmuxPath) else {
+        // cmux — cross-window support via CmuxTreeParser
+        guard CmuxTreeParser.isAvailable else {
             DebugLogger.log("AskUser", "No supported terminal, jumping")
             await TerminalJumper.shared.jump(to: session)
             return
@@ -843,48 +842,37 @@ struct InstanceRow: View {
         let sid = String(session.sessionId.prefix(8))
         DebugLogger.log("AskUser", "Finding workspace for '\(dirName)' sid=\(sid)")
 
-        // Helper to run cmux commands
-        func cmuxRun(_ args: [String]) -> String? {
-            let p = Process()
-            let pipe = Pipe()
-            p.executableURL = URL(fileURLWithPath: cmuxPath)
-            p.arguments = args
-            p.standardOutput = pipe
-            p.standardError = FileHandle.nullDevice
-            do {
-                try p.run()
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                p.waitUntilExit()
-                guard p.terminationStatus == 0 else { return nil }
-                return String(data: data, encoding: .utf8)
-            } catch { return nil }
+        // Strategy 1: TTY match across all windows (most reliable)
+        var targetLocation: CmuxLocation?
+        if let tty = session.tty, !tty.isEmpty {
+            targetLocation = CmuxTreeParser.findByTTY(tty, dirName: dirName)
         }
 
-        // Find workspace by searching surface titles for session ID or dir name
-        guard let wsOutput = cmuxRun(["list-workspaces"]) else {
-            await TerminalJumper.shared.jump(to: session)
-            return
+        // Strategy 2: Content match across all windows (session ID or dir name in title)
+        if targetLocation == nil {
+            targetLocation = CmuxTreeParser.findByContent(sessionId: session.sessionId, dirName: dirName)
         }
 
-        var targetWsRef: String?
-        for wsLine in wsOutput.components(separatedBy: "\n") where !wsLine.isEmpty {
-            guard let wsRef = wsLine.components(separatedBy: " ").first(where: { $0.hasPrefix("workspace:") }) else { continue }
-            guard let surfOutput = cmuxRun(["list-pane-surfaces", "--workspace", wsRef]) else { continue }
-            if surfOutput.contains(sid) || surfOutput.contains(dirName) {
-                targetWsRef = wsRef
-                break
+        // Strategy 3: Search workspace surfaces across all windows
+        if targetLocation == nil {
+            if let wsRef = CmuxTreeParser.findWorkspaceRef(sessionId: session.sessionId, dirName: dirName) {
+                // Found workspace, send directly
+                DebugLogger.log("AskUser", "Sending '\(index)' to \(wsRef) (workspace search)")
+                _ = CmuxTreeParser.cmuxRun(["send", "--workspace", wsRef, "--", "\(index)\r"])
+                DebugLogger.log("AskUser", "Sent!")
+                return
             }
         }
 
-        guard let wsRef = targetWsRef else {
+        guard let location = targetLocation else {
             DebugLogger.log("AskUser", "No matching workspace, jumping")
             await TerminalJumper.shared.jump(to: session)
             return
         }
 
-        // Send the option number + Enter
-        DebugLogger.log("AskUser", "Sending '\(index)' to \(wsRef)")
-        _ = cmuxRun(["send", "--workspace", wsRef, "--", "\(index)\r"])
+        // Send the option number + Enter to the matched workspace
+        DebugLogger.log("AskUser", "Sending '\(index)' to \(location.workspaceRef) in \(location.windowRef)")
+        _ = CmuxTreeParser.cmuxRun(["send", "--workspace", location.workspaceRef, "--", "\(index)\r"])
         DebugLogger.log("AskUser", "Sent!")
     }
 
