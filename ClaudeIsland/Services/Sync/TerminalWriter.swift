@@ -70,18 +70,25 @@ final class TerminalWriter {
     /// Send text directly via cmux using a Claude session UUID + cwd, without needing
     /// a SessionState in SessionStore. Used when phone sends a message to a session
     /// CodeIsland isn't currently tracking locally.
-    func sendTextDirect(_ text: String, claudeUuid: String, cwd: String?) async -> Bool {
+    ///
+    /// `livePid` is optional but strongly preferred — when SyncManager has a
+    /// `SessionState` it can pass `session.pid`, which CodeIsland captured from
+    /// the Claude process via `os.getppid()` in the hook script. That's the
+    /// only 100% reliable identity, because it doesn't depend on argv parsing
+    /// or cwd matching. argv/cwd fallbacks only kick in if the pid is missing
+    /// or stale.
+    func sendTextDirect(_ text: String, claudeUuid: String, cwd: String?, livePid: Int? = nil) async -> Bool {
         guard FileManager.default.isExecutableFile(atPath: cmuxPath) else {
             Self.logger.warning("cmux not found at \(self.cmuxPath)")
             return false
         }
-        return await sendViaCmuxDirect(text, claudeUuid: claudeUuid, cwd: cwd)
+        return await sendViaCmuxDirect(text, claudeUuid: claudeUuid, cwd: cwd, livePid: livePid)
     }
 
     /// Send a single control key (escape, ctrl+c, enter, …) to the Claude terminal.
     /// Returns true if the cmux surface was found and send-key invoked.
-    func sendControlKey(_ key: String, claudeUuid: String) async -> Bool {
-        guard let (wsId, surfId) = findCmuxTargetForClaudeSession(uuid: claudeUuid),
+    func sendControlKey(_ key: String, claudeUuid: String, cwd: String? = nil, livePid: Int? = nil) async -> Bool {
+        guard let (wsId, surfId) = findCmuxTarget(claudeUuid: claudeUuid, cwd: cwd, livePid: livePid),
               let surfId else {
             Self.logger.warning("sendControlKey: no cmux target for uuid=\(claudeUuid.prefix(8))")
             return false
@@ -97,8 +104,8 @@ final class TerminalWriter {
     ///
     /// Returns nil if we can't locate the cmux surface for this Claude session or
     /// capture fails.
-    func sendSlashCommandAndCaptureOutput(_ command: String, claudeUuid: String, settleMs: UInt64 = 1500) async -> String? {
-        guard let (wsId, surfId) = findCmuxTargetForClaudeSession(uuid: claudeUuid),
+    func sendSlashCommandAndCaptureOutput(_ command: String, claudeUuid: String, cwd: String? = nil, livePid: Int? = nil, settleMs: UInt64 = 1500) async -> String? {
+        guard let (wsId, surfId) = findCmuxTarget(claudeUuid: claudeUuid, cwd: cwd, livePid: livePid),
               let surfId else {
             Self.logger.warning("captureOutput: no cmux target for uuid=\(claudeUuid.prefix(8))")
             return nil
@@ -178,9 +185,9 @@ final class TerminalWriter {
     /// Paste one or more images into the terminal running the given Claude session,
     /// then send any accompanying text. Uses NSPasteboard + CGEvent Cmd+V via cmux focus.
     /// Returns true if at least the focusing + paste attempts succeeded.
-    func sendImagesAndText(images: [Data], text: String, claudeUuid: String) async -> Bool {
-        guard let (wsId, surfId) = findCmuxTargetForClaudeSession(uuid: claudeUuid) else {
-            Self.logger.warning("sendImagesAndText: no claude process for uuid=\(claudeUuid.prefix(8))")
+    func sendImagesAndText(images: [Data], text: String, claudeUuid: String, cwd: String? = nil, livePid: Int? = nil) async -> Bool {
+        guard let (wsId, surfId) = findCmuxTarget(claudeUuid: claudeUuid, cwd: cwd, livePid: livePid) else {
+            Self.logger.warning("sendImagesAndText: no cmux target for uuid=\(claudeUuid.prefix(8))")
             return false
         }
         guard let surfId else {
@@ -301,12 +308,19 @@ final class TerminalWriter {
         }
     }
 
-    private func sendViaCmuxDirect(_ text: String, claudeUuid: String, cwd: String?) async -> Bool {
-        // Strategy: find the running Claude process with `--session-id <claudeUuid>` on its
-        // argv, then read its CMUX_WORKSPACE_ID / CMUX_SURFACE_ID env vars. This is 100%
-        // deterministic — no string fuzz-matching against titles or cwds.
-        guard let (wsId, surfId) = findCmuxTargetForClaudeSession(uuid: claudeUuid) else {
-            Self.logger.warning("No running claude process with --session-id=\(claudeUuid.prefix(8)) — session is orphaned or on another machine")
+    private func sendViaCmuxDirect(_ text: String, claudeUuid: String, cwd: String?, livePid: Int?) async -> Bool {
+        // Resolution order (in increasing fallback unreliability):
+        //   1. **Live PID from CodeIsland's hook tracking** — captured at hook
+        //      time via `os.getppid()`, this is the actual Claude process for
+        //      the conversation. Read CMUX_*_ID env vars from /proc and we're
+        //      done. This works regardless of `claude --resume` rotating the
+        //      live session-id, and it works for multiple sessions in the same
+        //      cwd. THE preferred path.
+        //   2. argv match by --session-id (works only for fresh, non-resumed
+        //      sessions whose argv id == JSONL filename).
+        //   3. cwd-scoped scan (heuristic — picks highest pid when multiple).
+        guard let (wsId, surfId) = findCmuxTarget(claudeUuid: claudeUuid, cwd: cwd, livePid: livePid) else {
+            Self.logger.warning("No cmux-hosted claude process for uuid=\(claudeUuid.prefix(8)) cwd=\(cwd ?? "nil") pid=\(livePid?.description ?? "nil") — session is orphaned, in a non-cmux terminal, or on another machine")
             return false
         }
 
@@ -323,46 +337,133 @@ final class TerminalWriter {
         return true
     }
 
-    /// Walk the process list, find a `claude` process invoked with `--session-id <uuid>`,
-    /// then read its env via `ps -E` to extract cmux workspace/surface IDs.
-    nonisolated private func findCmuxTargetForClaudeSession(uuid: String) -> (workspaceId: String, surfaceId: String?)? {
+    /// Top-level resolver. Tries the most reliable identity first (live PID
+    /// from CodeIsland's hook tracking), then falls back to argv match, then
+    /// to cwd-scoped scanning.
+    nonisolated private func findCmuxTarget(claudeUuid: String, cwd: String?, livePid: Int?) -> (workspaceId: String, surfaceId: String?)? {
+        // Pass 0: hook-recorded live pid. Most reliable — `os.getppid()` from
+        // the python hook script gives us the exact Claude process.
+        if let livePid, let target = readCmuxIDs(forPid: livePid) {
+            return target
+        }
+        // Falls back to argv-then-cwd inside the existing helper.
+        return findCmuxTargetForClaudeSession(uuid: claudeUuid, cwd: cwd)
+    }
+
+    /// Look up a cmux workspace+surface for the live Claude process backing the
+    /// given session UUID. Tries argv match first (works when JSONL id == live
+    /// id), falls back to cwd-scoped scan when the conversation was resumed
+    /// (rotating live id) or when CodeIsland is reporting the JSONL filename.
+    nonisolated private func findCmuxTargetForClaudeSession(uuid: String, cwd: String?) -> (workspaceId: String, surfaceId: String?)? {
+        let candidates = listClaudeProcesses()
+        if candidates.isEmpty { return nil }
+
+        // Pass 1: exact argv match by --session-id
+        if let exact = candidates.first(where: { $0.sessionId == uuid }),
+           let target = readCmuxIDs(forPid: exact.pid) {
+            return target
+        }
+
+        // Pass 2: cwd-scoped fallback. Restrict to processes whose cwd matches
+        // the session's cwd AND who have CMUX env vars (i.e. are inside a cmux
+        // pane — no point routing to an iTerm window we can't drive).
+        guard let cwd, !cwd.isEmpty else {
+            Self.logger.info("findCmuxTarget: argv miss for uuid=\(uuid.prefix(8)) and no cwd to fall back on")
+            return nil
+        }
+
+        let cwdMatched = candidates
+            .filter { $0.cwd == cwd }
+            .compactMap { proc -> (pid: Int, target: (workspaceId: String, surfaceId: String?))? in
+                guard let target = readCmuxIDs(forPid: proc.pid) else { return nil }
+                return (proc.pid, target)
+            }
+
+        guard !cwdMatched.isEmpty else {
+            Self.logger.info("findCmuxTarget: no cwd-matching cmux-hosted claude in \(cwd)")
+            return nil
+        }
+
+        if cwdMatched.count > 1 {
+            Self.logger.warning("findCmuxTarget: \(cwdMatched.count) candidates in cwd=\(cwd) — picking highest pid as heuristic")
+        }
+        return cwdMatched.max { $0.pid < $1.pid }?.target
+    }
+
+    /// One running claude process — its pid, the session-id from argv, and its cwd.
+    nonisolated private struct ClaudeProcessInfo {
+        let pid: Int
+        let sessionId: String
+        let cwd: String?
+    }
+
+    /// Enumerate every `claude --session-id …` process. cwd resolved per pid via
+    /// `lsof -p <pid> -d cwd -Fn` (lightweight: 1 line per pid).
+    nonisolated private func listClaudeProcesses() -> [ClaudeProcessInfo] {
         let ps = Process()
         let out = Pipe()
         ps.executableURL = URL(fileURLWithPath: "/bin/ps")
         ps.arguments = ["-Ax", "-o", "pid=,command="]
         ps.standardOutput = out
         ps.standardError = FileHandle.nullDevice
-        do { try ps.run() } catch { return nil }
-        let psData = out.fileHandleForReading.readDataToEndOfFile()
+        do { try ps.run() } catch { return [] }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
         ps.waitUntilExit()
-        guard let psOutput = String(data: psData, encoding: .utf8) else { return nil }
+        guard let text = String(data: data, encoding: .utf8) else { return [] }
 
-        // Find PID whose command contains `claude` + `--session-id <uuid>`.
-        // Match substring rather than token-split because args may include JSON with spaces.
-        var matchedPid: String?
-        for line in psOutput.components(separatedBy: "\n") {
+        var processes: [ClaudeProcessInfo] = []
+        for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty else { continue }
-            if trimmed.contains("/claude") && trimmed.contains("--session-id \(uuid)") {
-                let parts = trimmed.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
-                if let pidPart = parts.first { matchedPid = String(pidPart); break }
-            }
+            guard trimmed.contains("/claude"),
+                  let sidRange = trimmed.range(of: "--session-id ")
+            else { continue }
+            let afterFlag = trimmed[sidRange.upperBound...]
+            let sid: String = {
+                if let space = afterFlag.firstIndex(of: " ") {
+                    return String(afterFlag[..<space])
+                }
+                return String(afterFlag)
+            }()
+            let pidStr = trimmed.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true).first.map(String.init) ?? ""
+            guard let pid = Int(pidStr) else { continue }
+            let cwd = lsofCwd(pid: pid)
+            processes.append(ClaudeProcessInfo(pid: pid, sessionId: sid, cwd: cwd))
         }
-        guard let pid = matchedPid else { return nil }
+        return processes
+    }
 
-        // ps -E -p <pid>: prints command + space-separated env vars on one (very long) line.
-        let envPs = Process()
-        let envOut = Pipe()
-        envPs.executableURL = URL(fileURLWithPath: "/bin/ps")
-        envPs.arguments = ["-E", "-p", pid, "-o", "command="]
-        envPs.standardOutput = envOut
-        envPs.standardError = FileHandle.nullDevice
-        do { try envPs.run() } catch { return nil }
-        let envData = envOut.fileHandleForReading.readDataToEndOfFile()
-        envPs.waitUntilExit()
-        guard let envLine = String(data: envData, encoding: .utf8) else { return nil }
+    nonisolated private func lsofCwd(pid: Int) -> String? {
+        let p = Process()
+        let pipe = Pipe()
+        p.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        p.arguments = ["-a", "-p", "\(pid)", "-d", "cwd", "-Fn"]
+        p.standardOutput = pipe
+        p.standardError = FileHandle.nullDevice
+        do { try p.run() } catch { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        guard let text = String(data: data, encoding: .utf8) else { return nil }
+        // Output format (-Fn): "p<pid>\nf<cwd>\nn<path>\n"
+        for line in text.split(separator: "\n") where line.hasPrefix("n") {
+            return String(line.dropFirst())
+        }
+        return nil
+    }
 
-        // Env vars appear as space-separated KEY=VALUE tokens after the command. Scan for our keys.
+    /// Read CMUX_WORKSPACE_ID and CMUX_SURFACE_ID env vars from a running pid.
+    /// Returns nil if the pid is gone, has no CMUX_WORKSPACE_ID, or ps -E fails.
+    nonisolated private func readCmuxIDs(forPid pid: Int) -> (workspaceId: String, surfaceId: String?)? {
+        let ps = Process()
+        let pipe = Pipe()
+        ps.executableURL = URL(fileURLWithPath: "/bin/ps")
+        ps.arguments = ["-E", "-p", "\(pid)", "-o", "command="]
+        ps.standardOutput = pipe
+        ps.standardError = FileHandle.nullDevice
+        do { try ps.run() } catch { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        ps.waitUntilExit()
+        guard let envLine = String(data: data, encoding: .utf8) else { return nil }
+
         var wsId: String?
         var surfId: String?
         for token in envLine.split(separator: " ") {

@@ -178,37 +178,31 @@ final class SyncManager: ObservableObject {
         let preview = String(text.prefix(200))
         Self.logger.info("handlePhoneMessage: serverId=\(serverSessionId, privacy: .public) localId=\(localId ?? "nil", privacy: .public) tag=\(claudeUuid ?? "nil", privacy: .public) cwd=\(cwd ?? "nil", privacy: .public) raw=\(preview, privacy: .public)")
 
+        // Resolve target identity ONCE up front and share across all paths
+        // (control key / image / slash command / text). When SessionStore is
+        // tracking this conversation, lift the live Claude PID off it — that's
+        // the single most reliable identity for cmux routing because it was
+        // captured from `os.getppid()` inside the hook script. Falls back to
+        // server-provided UUID + cwd when not tracked.
+        let trackedSession = localId.flatMap { id in sessions.first(where: { $0.sessionId == id }) }
+        let targetUuid: String? = trackedSession?.sessionId ?? claudeUuid
+        let livePid: Int? = trackedSession?.pid
+
         // Parse the message content — it may be plain text OR a JSON envelope with images.
         let (parsedText, imageBlobIds) = parseMessagePayload(text)
 
         // Control-key path: phone explicitly sends `{type:"key", key:"escape"}` etc.
         // These don't go through stdin — we fire them directly at the cmux surface.
         if let controlKey = parseControlKey(text) {
-            let targetUuidForKey: String?
-            if let localId, sessions.contains(where: { $0.sessionId == localId }) {
-                targetUuidForKey = localId
-            } else {
-                targetUuidForKey = claudeUuid
-            }
-            if let uuid = targetUuidForKey {
-                let ok = await TerminalWriter.shared.sendControlKey(controlKey, claudeUuid: uuid)
-                Self.logger.info("Phone control key '\(controlKey, privacy: .public)' → \(ok ? "success" : "failed")")
+            if let uuid = targetUuid {
+                let ok = await TerminalWriter.shared.sendControlKey(controlKey, claudeUuid: uuid, cwd: cwd, livePid: livePid)
+                Self.logger.info("Phone control key '\(controlKey, privacy: .public)' (uuid=\(uuid.prefix(8), privacy: .public) pid=\(livePid?.description ?? "nil", privacy: .public)) → \(ok ? "success" : "failed")")
             } else {
                 Self.logger.warning("Control key dropped: no target uuid")
             }
             return
         }
         Self.logger.info("parsed: text=\(parsedText.prefix(80), privacy: .public) blobCount=\(imageBlobIds.count)")
-
-        // Resolve which Claude UUID we're actually targeting for dedup & image routing.
-        let targetUuid: String?
-        if let localId, sessions.contains(where: { $0.sessionId == localId }) {
-            targetUuid = localId
-        } else if let claudeUuid {
-            targetUuid = claudeUuid
-        } else {
-            targetUuid = nil
-        }
 
         // Image path: download blobs and paste via NSPasteboard + Cmd+V
         if !imageBlobIds.isEmpty {
@@ -230,7 +224,7 @@ final class SyncManager: ObservableObject {
             if images.isEmpty {
                 Self.logger.warning("No images could be downloaded — falling back to text-only")
             } else {
-                let ok = await TerminalWriter.shared.sendImagesAndText(images: images, text: parsedText, claudeUuid: targetUuid)
+                let ok = await TerminalWriter.shared.sendImagesAndText(images: images, text: parsedText, claudeUuid: targetUuid, cwd: cwd, livePid: livePid)
                 if ok { recordPhoneInjection(claudeUuid: targetUuid, text: parsedText) }
                 Self.logger.info("Phone message with \(images.count) image(s) → terminal: \(ok ? "success" : "failed")")
                 return
@@ -243,7 +237,7 @@ final class SyncManager: ObservableObject {
         // command, wait, snapshot again, diff, and ship the new lines back as a
         // synthetic terminal_output message.
         if parsedText.hasPrefix("/"), let targetUuid {
-            let output = await TerminalWriter.shared.sendSlashCommandAndCaptureOutput(parsedText, claudeUuid: targetUuid)
+            let output = await TerminalWriter.shared.sendSlashCommandAndCaptureOutput(parsedText, claudeUuid: targetUuid, cwd: cwd, livePid: livePid)
             recordPhoneInjection(claudeUuid: targetUuid, text: parsedText)
             if let output, !output.isEmpty {
                 await sendTerminalOutputMessage(sessionId: serverSessionId, command: parsedText, output: output)
@@ -252,20 +246,16 @@ final class SyncManager: ObservableObject {
             return
         }
 
-        // Text-only path
-        // Path 1: locally tracked session
-        if let localId, let session = sessions.first(where: { $0.sessionId == localId }) {
-            let sent = await TerminalWriter.shared.sendText(parsedText, to: session)
-            if sent { recordPhoneInjection(claudeUuid: session.sessionId, text: parsedText) }
-            Self.logger.info("Phone message → terminal (tracked): \(sent ? "success" : "failed")")
-            return
-        }
-
-        // Path 2: not tracked locally — use server-provided UUID + cwd to find cmux workspace directly
-        if let uuid = claudeUuid {
-            let sent = await TerminalWriter.shared.sendTextDirect(parsedText, claudeUuid: uuid, cwd: cwd)
+        // Plain text path — uses the unified target identity computed at the top.
+        if let uuid = targetUuid {
+            let sent = await TerminalWriter.shared.sendTextDirect(
+                parsedText,
+                claudeUuid: uuid,
+                cwd: cwd,
+                livePid: livePid
+            )
             if sent { recordPhoneInjection(claudeUuid: uuid, text: parsedText) }
-            Self.logger.info("Phone message → terminal (direct uuid): \(sent ? "success" : "failed")")
+            Self.logger.info("Phone message → terminal (uuid=\(uuid.prefix(8), privacy: .public) pid=\(livePid?.description ?? "nil", privacy: .public)): \(sent ? "success" : "failed")")
             return
         }
 
