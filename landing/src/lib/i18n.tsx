@@ -103,6 +103,26 @@ const translations = {
   "community.wechatId": { zh: "微信号：", en: "WeChat ID: " },
   "community.close": { zh: "关闭", en: "Close" },
 
+  // Code Light
+  "codelight.tag": { zh: "iPhone 伴侣", en: "IPHONE COMPANION" },
+  "codelight.title": { zh: "Code Light", en: "Code Light" },
+  "codelight.subtitle": { zh: "Claude 在思考，你在吃午饭。你会知道。", en: "Claude is thinking. You're at lunch. You'll know." },
+  "codelight.desc": { zh: "Mac 刘海里那只像素猫，现在也住进了你 iPhone 的灵动岛。当前会话状态、最近的用户提问、Claude 的回复预览 —— 直接显示在锁屏上。", en: "The pixel cat from your Mac's notch now lives in your iPhone's Dynamic Island. Session status, latest question, Claude's reply — right on your lock screen." },
+  "codelight.macs": { zh: "一台 iPhone N 台 Mac", en: "One iPhone, N Macs" },
+  "codelight.sessions": { zh: "会话管理", en: "Session Tabs" },
+  "codelight.commands": { zh: "/斜杠命令", en: "/Slash Commands" },
+  "codelight.chat": { zh: "实时聊天", en: "Live Chat" },
+  "codelight.settings": { zh: "自托管 · 私密", en: "Self-hosted" },
+  "codelight.f1": { zh: "iPhone 灵动岛实时显示 Claude 状态", en: "Real Dynamic Island showing Claude's live status" },
+  "codelight.f2": { zh: "远程审批 — 手机上直接 approve/deny", en: "Remote approval — approve/deny from your phone" },
+  "codelight.f3": { zh: "斜杠命令带回显 — /model /cost /usage", en: "Slash commands with round-trip — /model /cost /usage" },
+  "codelight.f4": { zh: "远程启动新会话 — 一键 spawn cmux workspace", en: "Remote session launch — spawn cmux workspace with one tap" },
+  "codelight.f5": { zh: "图片附件 — 拍照发给 Claude", en: "Image attachments — take photos and send to Claude" },
+  "codelight.f6": { zh: "永久 6 位配对码 — 重启不变、多设备配对", en: "Permanent 6-char pair code — survives restarts, multi-device" },
+  "codelight.f7": { zh: "端到端加密 — 可自托管、零知识中继", en: "E2E encrypted — self-hostable, zero-knowledge relay" },
+  "codelight.status": { zh: "已进入 TestFlight，App Store 提交中", en: "In TestFlight, App Store submission in flight" },
+  "codelight.star": { zh: "给 Code Light 加 Star 获取发布通知", en: "Star Code Light to get notified" },
+
   // Footer
   "footer.madeWith": { zh: "Made with", en: "Made with" },
 } as const
