@@ -46,7 +46,7 @@ actor TerminalJumper {
         }
 
         if lower.contains("cmux") {
-            if await jumpViaCmux(cwd: cwd, sessionId: session.sessionId) { return true }
+            if await jumpViaCmux(cwd: cwd, sessionId: session.sessionId, tty: session.tty) { return true }
         }
 
         if lower.contains("ghostty") {
@@ -75,7 +75,7 @@ actor TerminalJumper {
 
         // 3. If terminal app unknown OR all specific strategies failed,
         //    try common AppleScript terminals in order
-        if await jumpViaCmux(cwd: cwd, sessionId: session.sessionId) { return true }
+        if await jumpViaCmux(cwd: cwd, sessionId: session.sessionId, tty: session.tty) { return true }
         if await jumpViaGhostty(cwd: cwd) { return true }
         if await jumpViaiTerm2(cwd: cwd, pid: pid, tty: session.tty) { return true }
         if await jumpViaTerminalApp(cwd: cwd, pid: pid) { return true }
@@ -215,37 +215,20 @@ actor TerminalJumper {
         return await runAppleScript(script)
     }
 
-    // MARK: - cmux (CLI)
+    // MARK: - cmux (native AppleScript — `focus terminal`)
 
-    private func jumpViaCmux(cwd: String, sessionId: String? = nil) async -> Bool {
-        let cmuxPath = "/Applications/cmux.app/Contents/Resources/bin/cmux"
-        guard FileManager.default.isExecutableFile(atPath: cmuxPath) else { return false }
+    private func jumpViaCmux(cwd: String, sessionId: String? = nil, tty: String? = nil) async -> Bool {
+        guard CmuxTreeParser.isAvailable else { return false }
 
-        // Use cmux find-window --content --select to search and jump in one command
-        let dirName = URL(fileURLWithPath: cwd).lastPathComponent
+        DebugLogger.log("Jump", "cmux jump: cwd=\(cwd)")
 
-        let process = Process()
-        let pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: cmuxPath)
-        process.arguments = ["find-window", "--content", "--select", dirName]
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
+        // One call: focus the terminal whose working directory matches
+        if CmuxTreeParser.jump(cwd: cwd) {
+            return true
+        }
 
-        do {
-            try process.run()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-
-            if process.terminationStatus == 0,
-               let output = String(data: data, encoding: .utf8),
-               output.contains("workspace:") {
-                DebugLogger.log("Jump", "cmux matched: \(output.prefix(60))")
-                await bringCmuxToFront()
-                return true
-            }
-        } catch {}
-
-        DebugLogger.log("Jump", "cmux no match for '\(dirName)'")
+        // Fallback: just bring cmux to front
+        DebugLogger.log("Jump", "cmux focus failed, activating cmux app")
         await bringCmuxToFront()
         return true
     }

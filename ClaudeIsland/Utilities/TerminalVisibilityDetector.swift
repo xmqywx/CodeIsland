@@ -78,45 +78,9 @@ struct TerminalVisibilityDetector {
         return true
     }
 
-    /// Check if a cmux session's workspace is currently selected
+    /// Check if a cmux session's terminal is currently focused in the front window
     private static func isCmuxSessionActive(_ session: SessionState) -> Bool {
-        let cmuxPath = "/Applications/cmux.app/Contents/Resources/bin/cmux"
-        guard FileManager.default.isExecutableFile(atPath: cmuxPath) else { return true }
-
-        let dirName = URL(fileURLWithPath: session.cwd).lastPathComponent
-        let sid = String(session.sessionId.prefix(8))
-
-        func cmuxRun(_ args: [String]) -> String? {
-            let p = Process()
-            let pipe = Pipe()
-            p.executableURL = URL(fileURLWithPath: cmuxPath)
-            p.arguments = args
-            p.standardOutput = pipe
-            p.standardError = FileHandle.nullDevice
-            do {
-                try p.run()
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                p.waitUntilExit()
-                guard p.terminationStatus == 0 else { return nil }
-                return String(data: data, encoding: .utf8)
-            } catch { return nil }
-        }
-
-        // Get selected workspace
-        guard let wsOutput = cmuxRun(["list-workspaces"]) else { return true }
-        var selectedWsRef: String?
-        for line in wsOutput.components(separatedBy: "\n") {
-            if line.contains("[selected]"),
-               let ref = line.components(separatedBy: " ").first(where: { $0.hasPrefix("workspace:") }) {
-                selectedWsRef = ref
-                break
-            }
-        }
-        guard let wsRef = selectedWsRef else { return true }
-
-        // Check if this session is in the selected workspace (by surface title)
-        guard let surfOutput = cmuxRun(["list-pane-surfaces", "--workspace", wsRef]) else { return true }
-        return surfOutput.contains(sid) || surfOutput.contains(dirName)
+        return CmuxTreeParser.isSessionActive(cwd: session.cwd)
     }
 
     // MARK: - iTerm2

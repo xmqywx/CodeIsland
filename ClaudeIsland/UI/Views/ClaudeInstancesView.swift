@@ -831,61 +831,16 @@ struct InstanceRow: View {
             }
         }
 
-        // cmux
-        let cmuxPath = "/Applications/cmux.app/Contents/Resources/bin/cmux"
-        guard FileManager.default.isExecutableFile(atPath: cmuxPath) else {
+        // cmux — native AppleScript: send text directly to the terminal
+        guard CmuxTreeParser.isAvailable else {
             DebugLogger.log("AskUser", "No supported terminal, jumping")
             await TerminalJumper.shared.jump(to: session)
             return
         }
 
-        let dirName = URL(fileURLWithPath: session.cwd).lastPathComponent
-        let sid = String(session.sessionId.prefix(8))
-        DebugLogger.log("AskUser", "Finding workspace for '\(dirName)' sid=\(sid)")
-
-        // Helper to run cmux commands
-        func cmuxRun(_ args: [String]) -> String? {
-            let p = Process()
-            let pipe = Pipe()
-            p.executableURL = URL(fileURLWithPath: cmuxPath)
-            p.arguments = args
-            p.standardOutput = pipe
-            p.standardError = FileHandle.nullDevice
-            do {
-                try p.run()
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                p.waitUntilExit()
-                guard p.terminationStatus == 0 else { return nil }
-                return String(data: data, encoding: .utf8)
-            } catch { return nil }
-        }
-
-        // Find workspace by searching surface titles for session ID or dir name
-        guard let wsOutput = cmuxRun(["list-workspaces"]) else {
-            await TerminalJumper.shared.jump(to: session)
-            return
-        }
-
-        var targetWsRef: String?
-        for wsLine in wsOutput.components(separatedBy: "\n") where !wsLine.isEmpty {
-            guard let wsRef = wsLine.components(separatedBy: " ").first(where: { $0.hasPrefix("workspace:") }) else { continue }
-            guard let surfOutput = cmuxRun(["list-pane-surfaces", "--workspace", wsRef]) else { continue }
-            if surfOutput.contains(sid) || surfOutput.contains(dirName) {
-                targetWsRef = wsRef
-                break
-            }
-        }
-
-        guard let wsRef = targetWsRef else {
-            DebugLogger.log("AskUser", "No matching workspace, jumping")
-            await TerminalJumper.shared.jump(to: session)
-            return
-        }
-
-        // Send the option number + Enter
-        DebugLogger.log("AskUser", "Sending '\(index)' to \(wsRef)")
-        _ = cmuxRun(["send", "--workspace", wsRef, "--", "\(index)\r"])
-        DebugLogger.log("AskUser", "Sent!")
+        DebugLogger.log("AskUser", "Sending '\(index)' to cmux terminal cwd=\(session.cwd)")
+        let sent = CmuxTreeParser.sendText("\(index)\r", toCwd: session.cwd)
+        DebugLogger.log("AskUser", "Sent: \(sent)")
     }
 
     private func runAppleScript(_ script: String) -> Bool {
