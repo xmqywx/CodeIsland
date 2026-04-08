@@ -32,6 +32,7 @@ struct NotchView: View {
 
     @AppStorage("smartSuppression") private var smartSuppression: Bool = true
     @AppStorage("autoCollapseOnMouseLeave") private var autoCollapseOnMouseLeave: Bool = true
+    @AppStorage("compactCollapsed") private var compactCollapsed: Bool = false
 
     @Namespace private var activityNamespace
 
@@ -137,12 +138,22 @@ struct NotchView: View {
     }
 
     /// Extra width for expanding activities (like Dynamic Island)
-    /// Just enough to show status on left wing and count on right wing
+    /// Compact mode: minimal width (dot + icon + count only), but wide enough to clear the notch
+    /// Full mode: original 240px behavior
     private var expansionWidth: CGFloat {
-        if hasActiveSessions {
-            return 240
+        if compactCollapsed {
+            // Compact: dot + icon + count, must be wide enough to not be hidden by notch
+            if hasActiveSessions {
+                return 100
+            }
+            return 0
+        } else {
+            // Full: original behavior
+            if hasActiveSessions {
+                return 240
+            }
+            return 0
         }
-        return 0
     }
 
     private var notchSize: CGSize {
@@ -263,7 +274,7 @@ struct NotchView: View {
         .preferredColorScheme(.dark)
         .onAppear {
             sessionMonitor.startMonitoring()
-            // On non-notched devices, keep visible so users have a target to interact with
+            // Non-notched devices need a visible target since there's no physical notch to hover over
             if !viewModel.hasPhysicalNotch {
                 isVisible = true
             }
@@ -277,6 +288,9 @@ struct NotchView: View {
         .onChange(of: sessionMonitor.instances) { _, instances in
             handleProcessingChange()
             handleWaitingForInputChange(instances)
+        }
+        .onChange(of: expansionWidth) { _, newWidth in
+            viewModel.currentExpansionWidth = newWidth
         }
     }
 
@@ -333,7 +347,10 @@ struct NotchView: View {
                     notchHeight: closedNotchSize.height,
                     isBouncing: isBouncing,
                     activityNamespace: activityNamespace,
-                    waitingForInputTimestamps: waitingForInputTimestamps
+                    waitingForInputTimestamps: waitingForInputTimestamps,
+                    compactMode: compactCollapsed,
+                    hasPhysicalNotch: viewModel.hasPhysicalNotch,
+                    notchWidth: closedNotchSize.width
                 )
                 .clipped()
             } else {
@@ -412,7 +429,7 @@ struct NotchView: View {
             activityCoordinator.hideActivity()
 
             // Delay hiding the notch until animation completes
-            // Don't hide on non-notched devices - users need a visible target
+            // Non-notched devices stay visible (no physical anchor to hover back)
             if viewModel.status == .closed && viewModel.hasPhysicalNotch {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     if !hasActiveSessions && viewModel.status == .closed {
@@ -432,7 +449,7 @@ struct NotchView: View {
                 waitingForInputTimestamps.removeAll()
             }
         case .closed:
-            // Don't hide on non-notched devices - users need a visible target
+            // Non-notched devices stay visible (no physical anchor to hover back)
             guard viewModel.hasPhysicalNotch else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                 if viewModel.status == .closed && !hasActiveSessions && !activityCoordinator.expandingActivity.show {
@@ -607,6 +624,12 @@ struct CollapsedNotchContent: View {
     var activityNamespace: Namespace.ID
     /// Timestamps when sessions entered waitingForInput, keyed by stableId
     var waitingForInputTimestamps: [String: Date]
+    /// Compact mode: only show dot + icon + count, no text
+    var compactMode: Bool = false
+    /// Whether the device has a physical notch (camera housing)
+    var hasPhysicalNotch: Bool = true
+    /// Width of the physical notch (used for camera avoidance spacing)
+    var notchWidth: CGFloat = 200
 
     // MARK: - Content Carousel
 
@@ -774,23 +797,30 @@ struct CollapsedNotchContent: View {
                         .matchedGeometryEffect(id: "crab", in: activityNamespace, isSource: true)
                 }
 
-                // Carousel status text (rotates between different info every 3s)
-                carouselContent
-                    .frame(height: 16)
-                    .clipped()
+                // Carousel status text — hidden in compact mode
+                if !compactMode {
+                    carouselContent
+                        .frame(height: 16)
+                        .clipped()
+                }
             }
             .padding(.leading, 6)
 
-            Spacer()
+            // Camera avoidance: on notched devices, ensure content stays outside camera area
+            if hasPhysicalNotch {
+                Spacer(minLength: notchWidth * 0.35)
+            } else {
+                Spacer()
+            }
 
             // ── Right wing (visible right of camera) ──
             HStack(spacing: 4) {
-                if let parts = activityTextParts {
+                // Project name — hidden in compact mode
+                if !compactMode, let parts = activityTextParts {
                     Text(parts.project)
                         .font(.system(size: 13, weight: .medium, design: .monospaced))
                         .foregroundColor(.white.opacity(0.6))
                         .lineLimit(1)
-
                 }
 
                 if activeSessionCount > 0 {

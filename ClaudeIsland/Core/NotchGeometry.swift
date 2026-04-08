@@ -37,12 +37,13 @@ struct NotchGeometry: Sendable {
         )
     }
 
-    /// Extra width for Dynamic Island expansion wings (must match NotchView.expansionWidth)
+    /// Default expansion width for Dynamic Island wings
     var expansionWidth: CGFloat = 240
 
     /// The collapsed content rect including wings (notch + expansion on both sides)
-    var collapsedScreenRect: CGRect {
-        let totalWidth = deviceNotchRect.width + expansionWidth
+    func collapsedScreenRect(expansionWidth: CGFloat? = nil) -> CGRect {
+        let width = expansionWidth ?? self.expansionWidth
+        let totalWidth = deviceNotchRect.width + width
         return CGRect(
             x: screenRect.midX - totalWidth / 2,
             y: screenRect.maxY - deviceNotchRect.height,
@@ -52,8 +53,8 @@ struct NotchGeometry: Sendable {
     }
 
     /// Check if a point is in the clickable notch area (including expanded wings)
-    func isPointInNotch(_ point: CGPoint) -> Bool {
-        collapsedScreenRect.insetBy(dx: -10, dy: -5).contains(point)
+    func isPointInNotch(_ point: CGPoint, expansionWidth: CGFloat? = nil) -> Bool {
+        collapsedScreenRect(expansionWidth: expansionWidth).insetBy(dx: -10, dy: -5).contains(point)
     }
 
     /// Check if a point is in the opened panel area

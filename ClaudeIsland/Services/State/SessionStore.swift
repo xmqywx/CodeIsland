@@ -952,6 +952,11 @@ actor SessionStore {
     private func processSessionEnd(sessionId: String) async {
         sessions.removeValue(forKey: sessionId)
         cancelPendingSync(sessionId: sessionId)
+        // Clean up watchers and pending permissions (mirrors zombie cleanup)
+        Task { @MainActor in
+            HookSocketServer.shared.cancelPendingPermissions(sessionId: sessionId)
+            InterruptWatcherManager.shared.stopWatching(sessionId: sessionId)
+        }
     }
 
     // MARK: - History Loading

@@ -152,18 +152,6 @@ The next CodeIsland release ships the **Code Light Sync module** — turning the
 
 ---
 
-A native macOS app that turns your MacBook's notch into a real-time control surface for AI coding agents. Monitor sessions, approve permissions, jump to terminals, and hang out with your Claude Code buddy — all without leaving your flow.
-
-> ### 📱 New: pairs with [Code Light](https://github.com/xmqywx/CodeLight) — your iPhone companion
-> CodeIsland now includes a built-in **sync module** that pairs with the Code Light iPhone app. From your phone you can:
-> - **See** every Claude Code session live, with the iPhone Dynamic Island showing the current phase
-> - **Send** any text message — including all `/slash` commands like `/model`, `/cost`, `/usage`, `/clear`
-> - **Spawn** brand-new cmux workspaces remotely with one tap (Mac-defined launch presets)
-> - **Send** images via camera or photo library (auto-pasted into the cmux pane)
-> - **Pair** multiple iPhones to the same Mac, or one iPhone to many Macs — your phone tracks them all
->
-> Pairing is **one permanent 6-character code per Mac** (or scan a QR). No accounts, no QR expiry, no re-pair after reboot. See the [Code Light Sync](#code-light-sync-iphone-companion) section below.
-
 ## Features
 
 ### Dynamic Island Notch
@@ -256,6 +244,9 @@ Toggle between flat list and project-grouped view:
 
 CodeIsland's **sync module** is the bridge that makes the [Code Light](https://github.com/xmqywx/CodeLight) iPhone companion possible. Open `Pair iPhone` from the notch menu to begin.
 
+<details>
+<summary><b>Technical details (click to expand)</b></summary>
+
 #### Pairing
 
 Each Mac is identified on the server by a **permanent 6-character `shortCode`** (lazy-allocated on first connect, never rotates). The pairing window shows both:
@@ -320,6 +311,8 @@ Phone sends → server → CodeIsland pastes → Claude writes to JSONL → file
 #### Multi-iPhone, multi-server
 
 A Mac can be paired with multiple iPhones simultaneously — they all share the same `shortCode`. From the iPhone side, one phone can be paired with multiple Macs across different backend servers; the phone's `LinkedMacs` list stores `serverUrl` per Mac and switches connections automatically when you tap into a different one.
+
+</details>
 
 ## Settings
 
@@ -396,25 +389,15 @@ xcodebuild -project ClaudeIsland.xcodeproj -scheme ClaudeIsland \
 
 CodeIsland supports English and Chinese with automatic system locale detection. Override in Settings > Language.
 
-## Contributing
+## Contributing / 参与贡献
 
-Contributions are welcome! Here's how:
+Contributions are welcome! 欢迎参与！
 
-1. **Report bugs** — [Open an issue](https://github.com/xmqywx/CodeIsland/issues) with steps to reproduce
-2. **Submit a PR** — Fork the repo, create a branch, make your changes, and open a Pull Request
-3. **Suggest features** — Open an issue tagged `enhancement`
+1. **Report bugs / 提交 Bug** — [Open an issue](https://github.com/xmqywx/CodeIsland/issues) with steps to reproduce
+2. **Submit a PR / 提交 PR** — Fork → branch → make changes → open a Pull Request
+3. **Suggest features / 建议功能** — Open an issue tagged `enhancement`
 
-I will personally review and merge all PRs. Please keep changes focused and include a clear description.
-
-## 参与贡献
-
-欢迎参与！方式如下：
-
-1. **提交 Bug** — 在 [Issues](https://github.com/xmqywx/CodeIsland/issues) 中描述问题和复现步骤
-2. **提交 PR** — Fork 本仓库，新建分支，修改后提交 Pull Request
-3. **建议功能** — 在 Issues 中提出，标记为 `enhancement`
-
-我会亲自 Review 并合并所有 PR。请保持改动聚焦，附上清晰的说明。
+I will personally review and merge all PRs. 我会亲自 Review 并合并所有 PR。
 
 ## Contact / 联系方式
 

@@ -183,4 +183,5 @@ enum L10n {
 
     static var smartSuppression: String { tr("Smart Suppression", "智能抑制") }
     static var autoCollapseOnMouseLeave: String { tr("Auto-Collapse on Leave", "离开时自动收起") }
+    static var compactCollapsed: String { tr("Compact Notch", "紧凑刘海") }
 }

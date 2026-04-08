@@ -62,6 +62,9 @@ class NotchViewModel: ObservableObject {
     let spacing: CGFloat = 12
     let hasPhysicalNotch: Bool
 
+    /// Current expansion width from NotchView (synced for hit testing)
+    @Published var currentExpansionWidth: CGFloat = 240
+
     var deviceNotchRect: CGRect { geometry.deviceNotchRect }
     var screenRect: CGRect { geometry.screenRect }
     var windowHeight: CGFloat { geometry.windowHeight }
@@ -164,7 +167,7 @@ class NotchViewModel: ObservableObject {
     private var currentChatSession: SessionState?
 
     private func handleMouseMove(_ location: CGPoint) {
-        let inNotch = geometry.isPointInNotch(location)
+        let inNotch = geometry.isPointInNotch(location, expansionWidth: currentExpansionWidth)
         let inOpened = status == .opened && geometry.isPointInOpenedPanel(location, size: openedSize)
 
         let newHovering = inNotch || inOpened
@@ -200,7 +203,7 @@ class NotchViewModel: ObservableObject {
                 repostClickAt(location)
             }
         case .closed, .popping:
-            if geometry.isPointInNotch(location) {
+            if geometry.isPointInNotch(location, expansionWidth: currentExpansionWidth) {
                 notchOpen(reason: .click)
             }
         }

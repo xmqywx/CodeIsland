@@ -20,6 +20,7 @@ struct NotchMenuView: View {
     @AppStorage("usePixelCat") private var usePixelCat: Bool = false
     @AppStorage("smartSuppression") private var smartSuppression: Bool = true
     @AppStorage("autoCollapseOnMouseLeave") private var autoCollapseOnMouseLeave: Bool = true
+    @AppStorage("compactCollapsed") private var compactCollapsed: Bool = false
     @AppStorage("usageWarningThreshold") private var usageWarningThreshold: Int = 90
     @State private var hooksInstalled: Bool = false
     @State private var launchAtLogin: Bool = false
@@ -122,6 +123,7 @@ struct NotchMenuView: View {
                         compactToggle(icon: "folder", label: L10n.groupByProject, isOn: showGrouped) { showGrouped.toggle() }
                         compactToggle(icon: "eye.slash", label: L10n.smartSuppression, isOn: smartSuppression) { smartSuppression.toggle() }
                         compactToggle(icon: "rectangle.compress.vertical", label: L10n.autoCollapseOnMouseLeave, isOn: autoCollapseOnMouseLeave) { autoCollapseOnMouseLeave.toggle() }
+                        compactToggle(icon: "rectangle.arrowtriangle.2.inward", label: L10n.compactCollapsed, isOn: compactCollapsed) { compactCollapsed.toggle() }
                         compactToggle(icon: "power", label: L10n.launchAtLogin, isOn: launchAtLogin) {
                             do {
                                 if launchAtLogin {
