@@ -58,19 +58,14 @@ const translations = {
 
   // HowItWorks
   "how.tag": { zh: "快速上手", en: "GET STARTED" },
-  "how.title": { zh: "三步开始", en: "Three steps to flow" },
+  "how.title": { zh: "两步开始", en: "Two steps to flow" },
   "how.install.cmd": { zh: "brew install xmqywx/codeisland/codeisland", en: "brew install xmqywx/codeisland/codeisland" },
   "how.install.title": { zh: "安装", en: "Install" },
-  "how.install.desc": { zh: "Homebrew 一行命令，或下载 DMG 拖到应用程序。", en: "One Homebrew command, or download the DMG." },
   "how.install.or": { zh: "或", en: "or" },
   "how.install.dmg": { zh: "下载 DMG 安装包", en: "Download DMG" },
   "how.install.copied": { zh: "已复制!", en: "Copied!" },
-  "how.launch.cmd": { zh: "# 自动配置 Claude Code hooks", en: "# Auto-configures Claude Code hooks" },
-  "how.launch.title": { zh: "启动", en: "Launch" },
-  "how.launch.desc": { zh: "CodeIsland 自动检测你的环境并安装 hooks，无需手动编辑任何配置文件。", en: "CodeIsland detects your setup and installs hooks. No config files to edit." },
-  "how.flow.cmd": { zh: "# 监控 → 审批 → 跳转 → 心流", en: "# monitor → approve → jump → flow" },
-  "how.flow.title": { zh: "专注", en: "Flow" },
-  "how.flow.desc": { zh: "监控、审批、跳回终端——全在刘海里完成。再也不用切窗口打断思路。", en: "Monitor, approve, and jump back — all from the notch. Never break your focus." },
+  "how.flow.auto": { zh: "启动后自动配置 Claude Code hooks，无需手动编辑配置文件。", en: "Auto-configures Claude Code hooks on launch. No config files to edit." },
+  "how.flow.result": { zh: "监控、审批、跳回终端——全在刘海里完成，不打断心流。", en: "Monitor, approve, jump back — all from the notch. Stay in flow." },
 
   // OpenSource
   "os.title": { zh: "开源免费", en: "Open Source & Free" },

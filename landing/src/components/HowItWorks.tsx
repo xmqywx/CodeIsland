@@ -1,10 +1,10 @@
 import { useState } from "react"
-import { Download, Rocket, Zap, Copy, Check, ExternalLink } from "lucide-react"
+import { Download, Copy, Check, ExternalLink, Rocket, Zap } from "lucide-react"
 import { useI18n } from "../lib/i18n"
 
 const BREW_CMD = "brew install xmqywx/codeisland/codeisland"
 
-function InstallTerminal() {
+export default function HowItWorks() {
   const { t } = useI18n()
   const [copied, setCopied] = useState(false)
 
@@ -15,91 +15,63 @@ function InstallTerminal() {
   }
 
   return (
-    <div className="glass rounded-xl p-4 mb-3 text-left">
-      <div className="flex items-center gap-1.5 mb-2">
-        <div className="w-2 h-2 rounded-full bg-red-400/60" />
-        <div className="w-2 h-2 rounded-full bg-amber/60" />
-        <div className="w-2 h-2 rounded-full bg-green/60" />
-        <span className="flex-1" />
-        <button
-          onClick={handleCopy}
-          className="flex items-center gap-1 text-[10px] text-green/60 hover:text-green transition-colors cursor-pointer"
-        >
-          {copied ? <Check size={10} /> : <Copy size={10} />}
-          {copied ? t("how.install.copied") : "Copy"}
-        </button>
-      </div>
-      <code className="font-mono text-xs text-green/80 leading-relaxed block">
-        <span className="text-purple-light/40">$</span> {t("how.install.cmd")}
-      </code>
-    </div>
-  )
-}
-
-function InstallDmgLink() {
-  const { t } = useI18n()
-  return (
-    <div className="flex items-center justify-center gap-2 mb-5">
-      <span className="text-[11px] text-text-muted/50">{t("how.install.or")}</span>
-      <a
-        href="https://github.com/xmqywx/CodeIsland/releases"
-        className="inline-flex items-center gap-1.5 text-[11px] text-green/70 hover:text-green transition-colors"
-      >
-        <ExternalLink size={10} />
-        {t("how.install.dmg")}
-      </a>
-    </div>
-  )
-}
-
-export default function HowItWorks() {
-  const { t } = useI18n()
-
-  const steps = [
-    { Icon: Download, num: "01", cmdKey: "how.install.cmd" as const, titleKey: "how.install.title" as const, descKey: "how.install.desc" as const, isInstall: true },
-    { Icon: Rocket, num: "02", cmdKey: "how.launch.cmd" as const, titleKey: "how.launch.title" as const, descKey: "how.launch.desc" as const, isInstall: false },
-    { Icon: Zap, num: "03", cmdKey: "how.flow.cmd" as const, titleKey: "how.flow.title" as const, descKey: "how.flow.desc" as const, isInstall: false },
-  ]
-
-  return (
     <section id="how-it-works" className="relative z-20 bg-deep py-20 sm:py-32 px-4 sm:px-6 noise">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_40%_at_50%_100%,rgba(52,211,153,0.04)_0%,transparent_60%)]" />
-      <div className="max-w-5xl mx-auto relative z-10">
-        <div style={{ animation: 'heroEnter 0.8s ease-out both' }} className="text-center mb-12 sm:mb-20">
+      <div className="max-w-2xl mx-auto relative z-10">
+        <div style={{ animation: 'heroEnter 0.8s ease-out both' }} className="text-center mb-10 sm:mb-14">
           <span className="font-mono text-xs text-green uppercase tracking-[0.3em]">{t("how.tag")}</span>
-          <h2 className="font-display text-3xl sm:text-4xl sm:text-5xl font-extrabold text-text-primary mt-4">{t("how.title")}</h2>
+          <h2 className="font-display text-3xl sm:text-4xl sm:text-5xl font-extrabold text-text-primary mt-4">{t("how.install.title")}</h2>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 relative">
-          <div className="hidden md:block absolute top-16 left-[16%] right-[16%] h-px bg-gradient-to-r from-transparent via-purple-accent/20 to-transparent" />
-          {steps.map((step, i) => (
-            <div key={step.num} style={{ animation: `heroEnter 0.6s ease-out ${i * 0.12}s both` }} className="text-center">
-              <div className="relative inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-green/10 border border-green/15 mb-6">
-                <step.Icon size={20} className="text-green" />
-                <span className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-deep border border-green/30 flex items-center justify-center font-mono text-[9px] text-green font-bold">{step.num}</span>
-              </div>
 
-              {step.isInstall ? (
-                <>
-                  <InstallTerminal />
-                  <InstallDmgLink />
-                </>
-              ) : (
-                <div className="glass rounded-xl p-4 mb-5 text-left">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <div className="w-2 h-2 rounded-full bg-red-400/60" />
-                    <div className="w-2 h-2 rounded-full bg-amber/60" />
-                    <div className="w-2 h-2 rounded-full bg-green/60" />
-                  </div>
-                  <code className="font-mono text-xs text-green/80 leading-relaxed block">
-                    <span className="text-purple-light/40">$</span> {t(step.cmdKey)}
-                  </code>
-                </div>
-              )}
-
-              <h3 className="font-display text-xl font-bold text-text-primary">{t(step.titleKey)}</h3>
-              <p className="text-sm text-text-muted mt-2 leading-relaxed">{t(step.descKey)}</p>
+        {/* Main install card */}
+        <div style={{ animation: 'heroEnter 0.6s ease-out 0.1s both' }} className="glass rounded-2xl p-6 sm:p-8 border border-green/10">
+          {/* Brew terminal */}
+          <div className="rounded-xl p-5 mb-4" style={{ background: 'rgba(0,0,0,0.3)' }}>
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="w-2.5 h-2.5 rounded-full bg-red-400/60" />
+              <div className="w-2.5 h-2.5 rounded-full bg-amber/60" />
+              <div className="w-2.5 h-2.5 rounded-full bg-green/60" />
+              <span className="flex-1" />
+              <button
+                onClick={handleCopy}
+                className="flex items-center gap-1.5 text-xs text-green/60 hover:text-green transition-colors cursor-pointer px-2 py-1 rounded-md hover:bg-white/[0.04]"
+              >
+                {copied ? <Check size={12} /> : <Copy size={12} />}
+                {copied ? t("how.install.copied") : "Copy"}
+              </button>
             </div>
-          ))}
+            <code className="font-mono text-sm sm:text-base text-green leading-relaxed block">
+              <span className="text-white/20">$</span> {t("how.install.cmd")}
+            </code>
+          </div>
+
+          {/* DMG alternative */}
+          <div className="flex items-center justify-center gap-2.5 mb-6">
+            <div className="h-px flex-1 bg-white/[0.06]" />
+            <span className="text-xs text-text-muted/40 font-mono">{t("how.install.or")}</span>
+            <div className="h-px flex-1 bg-white/[0.06]" />
+          </div>
+
+          <a
+            href="https://github.com/xmqywx/CodeIsland/releases"
+            className="flex items-center justify-center gap-2 w-full py-3 rounded-xl text-sm font-mono text-green/80 hover:text-green transition-all duration-200 hover:bg-green/[0.06] border border-green/10 hover:border-green/20"
+          >
+            <Download size={14} />
+            {t("how.install.dmg")}
+            <ExternalLink size={11} className="opacity-50" />
+          </a>
+        </div>
+
+        {/* What happens next — compact info row */}
+        <div style={{ animation: 'heroEnter 0.6s ease-out 0.2s both' }} className="flex flex-col sm:flex-row gap-4 mt-8">
+          <div className="flex-1 flex items-start gap-3 px-4 py-3 rounded-xl" style={{ background: 'rgba(52,211,153,0.03)' }}>
+            <Rocket size={16} className="text-green/50 mt-0.5 shrink-0" />
+            <p className="text-xs text-text-muted leading-relaxed">{t("how.flow.auto")}</p>
+          </div>
+          <div className="flex-1 flex items-start gap-3 px-4 py-3 rounded-xl" style={{ background: 'rgba(52,211,153,0.03)' }}>
+            <Zap size={16} className="text-green/50 mt-0.5 shrink-0" />
+            <p className="text-xs text-text-muted leading-relaxed">{t("how.flow.result")}</p>
+          </div>
         </div>
       </div>
     </section>
