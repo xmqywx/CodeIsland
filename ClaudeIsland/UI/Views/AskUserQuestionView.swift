@@ -214,6 +214,11 @@ struct AskUserQuestionView: View {
         performGhosttyAction("text:\\r", cwd: cwd) // Enter
 
         DebugLogger.log("AskUser", "Sent \(downPresses) arrows + Enter")
+
+        // Reset after delay — allows clicking the next question in a multi-question call.
+        // Terminal shows questions one at a time; the next appears after ~500ms.
+        try? await Task.sleep(nanoseconds: 800_000_000)
+        isSending = false
     }
 
     private func submitCustomText() {
