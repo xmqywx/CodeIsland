@@ -98,6 +98,15 @@ struct PendingPermission: Sendable {
     let receivedAt: Date
 }
 
+/// Pending question request waiting for user answer
+struct PendingQuestion: Sendable {
+    let sessionId: String
+    let toolUseId: String
+    let questions: [QuestionItem]
+    let clientSocket: Int32
+    let receivedAt: Date
+}
+
 /// Callback for hook events
 typealias HookEventHandler = @Sendable (HookEvent) -> Void
 
@@ -118,6 +127,8 @@ class HookSocketServer {
 
     /// Pending permission requests indexed by toolUseId
     private var pendingPermissions: [String: PendingPermission] = [:]
+    /// Pending question requests indexed by toolUseId
+    private var pendingQuestions: [String: PendingQuestion] = [:]
     private let permissionsLock = NSLock()
 
     /// Cache tool_use_id from PreToolUse to correlate with PermissionRequest
@@ -217,6 +228,18 @@ class HookSocketServer {
     func respondToPermission(toolUseId: String, decision: String, reason: String? = nil) {
         queue.async { [weak self] in
             self?.sendPermissionResponse(toolUseId: toolUseId, decision: decision, reason: reason)
+        }
+    }
+
+    func respondToQuestion(toolUseId: String, answers: [String: String]) {
+        queue.async { [weak self] in
+            self?.sendQuestionResponse(toolUseId: toolUseId, decision: "answered", answers: answers)
+        }
+    }
+
+    func skipQuestion(toolUseId: String) {
+        queue.async { [weak self] in
+            self?.sendQuestionResponse(toolUseId: toolUseId, decision: "skip", answers: nil)
         }
     }
 
@@ -435,35 +458,66 @@ class HookSocketServer {
                 return
             }
 
-            logger.debug("Permission request - keeping socket open for \(event.sessionId.prefix(8), privacy: .public) tool:\(toolUseId.prefix(12), privacy: .public)")
+            if event.status == "waiting_for_question" {
+                let questionItems = event.parseQuestionItems(from: event.toolInput)
+                let pending = PendingQuestion(
+                    sessionId: event.sessionId,
+                    toolUseId: toolUseId,
+                    questions: questionItems,
+                    clientSocket: clientSocket,
+                    receivedAt: Date()
+                )
+                permissionsLock.lock()
+                pendingQuestions[toolUseId] = pending
+                permissionsLock.unlock()
 
-            let updatedEvent = HookEvent(
-                sessionId: event.sessionId,
-                cwd: event.cwd,
-                event: event.event,
-                status: event.status,
-                pid: event.pid,
-                tty: event.tty,
-                tool: event.tool,
-                toolInput: event.toolInput,
-                toolUseId: toolUseId,  // Use resolved toolUseId
-                notificationType: event.notificationType,
-                message: event.message
-            )
+                // Create updated event with resolved toolUseId
+                let updatedEvent = HookEvent(
+                    sessionId: event.sessionId,
+                    cwd: event.cwd,
+                    event: event.event,
+                    status: event.status,
+                    pid: event.pid,
+                    tty: event.tty,
+                    tool: event.tool,
+                    toolInput: event.toolInput,
+                    toolUseId: toolUseId,
+                    notificationType: event.notificationType,
+                    message: event.message
+                )
+                eventHandler?(updatedEvent)
+                return
+            } else {
+                logger.debug("Permission request - keeping socket open for \(event.sessionId.prefix(8), privacy: .public) tool:\(toolUseId.prefix(12), privacy: .public)")
 
-            let pending = PendingPermission(
-                sessionId: event.sessionId,
-                toolUseId: toolUseId,
-                clientSocket: clientSocket,
-                event: updatedEvent,
-                receivedAt: Date()
-            )
-            permissionsLock.lock()
-            pendingPermissions[toolUseId] = pending
-            permissionsLock.unlock()
+                let updatedEvent = HookEvent(
+                    sessionId: event.sessionId,
+                    cwd: event.cwd,
+                    event: event.event,
+                    status: event.status,
+                    pid: event.pid,
+                    tty: event.tty,
+                    tool: event.tool,
+                    toolInput: event.toolInput,
+                    toolUseId: toolUseId,  // Use resolved toolUseId
+                    notificationType: event.notificationType,
+                    message: event.message
+                )
 
-            eventHandler?(updatedEvent)
-            return
+                let pending = PendingPermission(
+                    sessionId: event.sessionId,
+                    toolUseId: toolUseId,
+                    clientSocket: clientSocket,
+                    event: updatedEvent,
+                    receivedAt: Date()
+                )
+                permissionsLock.lock()
+                pendingPermissions[toolUseId] = pending
+                permissionsLock.unlock()
+
+                eventHandler?(updatedEvent)
+                return
+            }
         } else {
             close(clientSocket)
         }
@@ -499,6 +553,39 @@ class HookSocketServer {
                 logger.error("Write failed with errno: \(errno)")
             } else {
                 logger.debug("Write succeeded: \(result) bytes")
+            }
+        }
+
+        close(pending.clientSocket)
+    }
+
+    private func sendQuestionResponse(toolUseId: String, decision: String, answers: [String: String]?) {
+        permissionsLock.lock()
+        guard let pending = pendingQuestions.removeValue(forKey: toolUseId) else {
+            permissionsLock.unlock()
+            logger.debug("No pending question for toolUseId: \(toolUseId.prefix(12), privacy: .public)")
+            return
+        }
+        permissionsLock.unlock()
+
+        var responseDict: [String: Any] = ["decision": decision]
+        if let answers = answers {
+            responseDict["answers"] = answers
+        }
+
+        guard let data = try? JSONSerialization.data(withJSONObject: responseDict) else {
+            close(pending.clientSocket)
+            return
+        }
+
+        let age = Date().timeIntervalSince(pending.receivedAt)
+        logger.info("Sending question response: \(decision, privacy: .public) for \(pending.sessionId.prefix(8), privacy: .public) (age: \(String(format: "%.1f", age), privacy: .public)s)")
+
+        data.withUnsafeBytes { bytes in
+            guard let baseAddress = bytes.baseAddress else { return }
+            let result = write(pending.clientSocket, baseAddress, data.count)
+            if result < 0 {
+                logger.error("Question response write failed with errno: \(errno)")
             }
         }
 
