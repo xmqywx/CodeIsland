@@ -213,71 +213,56 @@ struct AskUserQuestionView: View {
         }
     }
 
+    /// Send keystrokes to the frontmost terminal app using System Events.
+    /// Uses `keystroke` which simulates real keyboard input (raw mode),
+    /// unlike `write text` / `input text` which paste and cause echo.
     private func sendOptionToTerminal(index: Int) async {
+        await sendKeystrokesToTerminal("\(index)\n")
+    }
+
+    private func sendTextToTerminal(_ text: String) async {
+        await sendKeystrokesToTerminal("\(text)\n")
+    }
+
+    private func sendKeystrokesToTerminal(_ keys: String) async {
+        // First, activate the terminal app
         let termApp = session.terminalApp?.lowercased() ?? ""
-
-        if termApp.contains("iterm") {
-            let script = """
-            tell application "iTerm2"
-                tell current session of current tab of current window
-                    write text "\(index)"
-                end tell
-            end tell
-            """
-            if runAppleScript(script) {
-                DebugLogger.log("AskUser", "Sent \(index) via iTerm2")
-                return
-            }
-        }
-
-        if termApp.contains("terminal") && !termApp.contains("wez") {
-            let script = """
-            tell application "Terminal"
-                do script "\(index)" in selected tab of front window
-            end tell
-            """
-            if runAppleScript(script) {
-                DebugLogger.log("AskUser", "Sent \(index) via Terminal.app")
-                return
-            }
-        }
-
-        guard CmuxTreeParser.isAvailable else {
-            DebugLogger.log("AskUser", "No supported terminal, jumping")
+        let appName: String
+        if termApp.contains("cmux") {
+            appName = "cmux"
+        } else if termApp.contains("iterm") {
+            appName = "iTerm2"
+        } else if termApp.contains("ghostty") {
+            appName = "Ghostty"
+        } else if termApp.contains("terminal") && !termApp.contains("wez") {
+            appName = "Terminal"
+        } else if termApp.contains("kitty") {
+            appName = "kitty"
+        } else if termApp.contains("wezterm") {
+            appName = "WezTerm"
+        } else if termApp.contains("warp") {
+            appName = "Warp"
+        } else {
+            DebugLogger.log("AskUser", "Unknown terminal app: \(termApp), jumping")
             await TerminalJumper.shared.jump(to: session)
             return
         }
 
-        let sent = CmuxTreeParser.sendText("\(index)\r", toCwd: session.cwd)
-        DebugLogger.log("AskUser", "Sent \(index) to cmux: \(sent)")
-    }
-
-    private func sendTextToTerminal(_ text: String) async {
-        let termApp = session.terminalApp?.lowercased() ?? ""
-        let escaped = text.replacingOccurrences(of: "\"", with: "\\\"")
-
-        if termApp.contains("iterm") {
-            let script = """
-            tell application "iTerm2"
-                tell current session of current tab of current window
-                    write text "\(escaped)"
-                end tell
-            end tell
-            """
-            if runAppleScript(script) { return }
-        }
-
-        if termApp.contains("terminal") && !termApp.contains("wez") {
-            let script = """
-            tell application "Terminal"
-                do script "\(escaped)" in selected tab of front window
-            end tell
-            """
-            if runAppleScript(script) { return }
-        }
-
-        if CmuxTreeParser.isAvailable {
-            _ = CmuxTreeParser.sendText("\(text)\r", toCwd: session.cwd)
+        // Use System Events keystroke — simulates real keyboard input
+        let escaped = keys.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let script = """
+        tell application "\(appName)" to activate
+        delay 0.1
+        tell application "System Events"
+            keystroke "\(escaped)"
+        end tell
+        """
+        if runAppleScript(script) {
+            DebugLogger.log("AskUser", "Sent keystroke to \(appName)")
+        } else {
+            DebugLogger.log("AskUser", "keystroke failed for \(appName), jumping")
+            await TerminalJumper.shared.jump(to: session)
         }
     }
 
