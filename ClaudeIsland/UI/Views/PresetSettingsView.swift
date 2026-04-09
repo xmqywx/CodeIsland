@@ -20,18 +20,18 @@ struct PresetSettingsRow: View {
             HStack(spacing: 10) {
                 Image(systemName: "wand.and.stars")
                     .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(isHovered ? 1 : 0.6))
+                    .opacity(isHovered ? 1 : 0.6)
                     .frame(width: 16)
 
                 Text("Launch Presets")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white.opacity(isHovered ? 1 : 0.7))
+                    .opacity(isHovered ? 1 : 0.7)
 
                 Spacer()
 
                 Text("\(PresetStore.shared.presets.count)")
                     .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.4))
+                    .opacity(0.4)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
