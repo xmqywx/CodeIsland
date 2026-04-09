@@ -32,18 +32,18 @@ struct SystemSettingsRow: View {
             HStack(spacing: 10) {
                 Image(systemName: "gearshape.fill")
                     .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(isHovered ? 1 : 0.6))
+                    .opacity(isHovered ? 1 : 0.6)
                     .frame(width: 16)
 
                 Text(L10n.openSettings)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white.opacity(isHovered ? 1 : 0.7))
+                    .opacity(isHovered ? 1 : 0.7)
 
                 Spacer()
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.3))
+                    .opacity(0.3)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
