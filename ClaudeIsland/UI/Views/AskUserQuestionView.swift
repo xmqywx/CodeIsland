@@ -15,7 +15,6 @@ struct AskUserQuestionView: View {
     @State private var customText: String = ""
     @State private var hoveredKey: String? = nil  // "questionIdx-optionIdx" to scope hover per question
     @State private var isSending: Bool = false
-    @State private var answeredCount: Int = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -43,14 +42,64 @@ struct AskUserQuestionView: View {
             Spacer(minLength: 4)
 
             // Custom text input — only show for questions with 3+ options
-            // (simple 2-option questions like Submit/Cancel don't need custom text)
             if hasCustomTextOption {
                 customInputBar
                     .padding(.horizontal, 12)
                     .padding(.bottom, 6)
             }
 
-            // Jump to terminal — bottom, full width
+            // Bottom bar: multi-question gets Submit/Cancel, single gets Jump to Terminal
+            if context.questions.count > 1 {
+                HStack(spacing: 8) {
+                    // Submit Answers — sends Enter (option 1 in CLI)
+                    Button { confirmSubmit() } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark")
+                                .notchFont(9)
+                            Text("Submit")
+                                .notchFont(10, weight: .medium)
+                        }
+                        .foregroundColor(TerminalColors.amber)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(TerminalColors.amber.opacity(0.1))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .strokeBorder(TerminalColors.amber.opacity(0.2), lineWidth: 0.5)
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    // Cancel — sends ↓ + Enter (option 2 in CLI)
+                    Button { cancelSubmit() } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "xmark")
+                                .notchFont(9)
+                            Text("Cancel")
+                                .notchFont(10, weight: .medium)
+                        }
+                        .foregroundColor(.white.opacity(0.5))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.white.opacity(0.04))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 4)
+            }
+
+            // Jump to terminal — always at bottom
             jumpToTerminalButton
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
@@ -60,7 +109,6 @@ struct AskUserQuestionView: View {
             isSending = false
             customText = ""
             hoveredKey = nil
-            answeredCount = 0
         }
     }
 
@@ -227,20 +275,26 @@ struct AskUserQuestionView: View {
         }
         performGhosttyAction("text:\\r", cwd: cwd) // Enter
 
-        answeredCount += 1
-        let totalQuestions = context.questions.count
-        DebugLogger.log("AskUser", "Sent \(downPresses) arrows + Enter (\(answeredCount)/\(totalQuestions))")
-
-        // Multi-question: after all questions answered, auto-confirm "Submit answers"
-        if totalQuestions > 1 && answeredCount >= totalQuestions {
-            try? await Task.sleep(nanoseconds: 800_000_000)
-            performGhosttyAction("text:\\r", cwd: cwd) // Confirm submit
-            DebugLogger.log("AskUser", "Auto-confirmed submit")
-        }
+        DebugLogger.log("AskUser", "Sent \(downPresses) arrows + Enter")
 
         // Reset after delay to allow next question click
         try? await Task.sleep(nanoseconds: 800_000_000)
         isSending = false
+    }
+
+    /// Send Enter to confirm "Submit answers" (option 1 in CLI).
+    private func confirmSubmit() {
+        let cwd = session.cwd
+        performGhosttyAction("text:\\r", cwd: cwd) // Enter selects default (Submit)
+        DebugLogger.log("AskUser", "Confirmed submit")
+    }
+
+    /// Send ↓ + Enter to select "Cancel" (option 2 in CLI).
+    private func cancelSubmit() {
+        let cwd = session.cwd
+        performGhosttyAction("csi:B", cwd: cwd) // Arrow Down to Cancel
+        performGhosttyAction("text:\\r", cwd: cwd) // Enter
+        DebugLogger.log("AskUser", "Cancelled submit")
     }
 
     private func submitCustomText() {
