@@ -293,6 +293,10 @@ class NotchViewModel: ObservableObject {
             let screenHeight = screen.frame.height
             let cgPoint = CGPoint(x: location.x, y: screenHeight - location.y)
 
+            // Save cursor position — CGEvent.post(tap: .cghidEventTap)
+            // physically warps the cursor to mouseCursorPosition.
+            let savedCursorPos = CGEvent(source: nil)?.location
+
             // Create and post mouse down event
             if let mouseDown = CGEvent(
                 mouseEventSource: nil,
@@ -311,6 +315,12 @@ class NotchViewModel: ObservableObject {
                 mouseButton: .left
             ) {
                 mouseUp.post(tap: .cghidEventTap)
+            }
+
+            // Restore cursor position to prevent unintended cursor jump
+            if let savedCursorPos {
+                CGWarpMouseCursorPosition(savedCursorPos)
+                CGAssociateMouseAndMouseCursorPosition(1)
             }
         }
     }

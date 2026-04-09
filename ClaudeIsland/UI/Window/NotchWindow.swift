@@ -109,6 +109,11 @@ class NotchPanel: NSPanel {
 
         let mouseButton: CGMouseButton = event.type == .rightMouseDown || event.type == .rightMouseUp ? .right : .left
 
+        // Save cursor position — CGEvent.post(tap: .cghidEventTap) moves
+        // the physical cursor to mouseCursorPosition, which can warp the
+        // cursor unexpectedly when the panel intercepts stale events.
+        let savedCursorPos = CGEvent(source: nil)?.location
+
         if let cgEvent = CGEvent(
             mouseEventSource: nil,
             mouseType: mouseType,
@@ -116,6 +121,12 @@ class NotchPanel: NSPanel {
             mouseButton: mouseButton
         ) {
             cgEvent.post(tap: .cghidEventTap)
+        }
+
+        // Restore cursor position to prevent unintended cursor jump
+        if let savedCursorPos {
+            CGWarpMouseCursorPosition(savedCursorPos)
+            CGAssociateMouseAndMouseCursorPosition(1)
         }
     }
 }

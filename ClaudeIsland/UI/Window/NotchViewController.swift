@@ -12,6 +12,11 @@ import SwiftUI
 class PassThroughHostingView<Content: View>: NSHostingView<Content> {
     var isOpened: () -> Bool = { false }
 
+    // Explicit deinit works around a Swift 6.2.4 compiler crash (SR-xxxxx)
+    // in SILPerformanceInliner when optimizing the synthesized deallocating
+    // deinit of a generic NSHostingView subclass.
+    deinit {}
+
     override func hitTest(_ point: NSPoint) -> NSView? {
         // When opened, let SwiftUI handle all hit testing naturally
         if isOpened() {
