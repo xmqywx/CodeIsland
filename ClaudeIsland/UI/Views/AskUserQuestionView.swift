@@ -191,17 +191,18 @@ struct AskUserQuestionView: View {
 
     // MARK: - Terminal Sending
 
-    /// Defer the PermissionRequest to the CLI (don't approve via hook socket),
-    /// then send the approval + option selection as terminal keystrokes.
-    /// This ensures Claude Code shows the interactive AskUserQuestion picker.
+    /// Release the hook with "ask" (so Claude Code shows its normal UI),
+    /// wait for the UI to render, then send the option number to the terminal.
     private func approveAndSendOption(index: Int) async {
-        // Respond "ask" to hook socket — Python script exits, CLI shows permission prompt
-        deferPermissionToTerminal()
-        // Small delay for the permission prompt to render
-        try? await Task.sleep(nanoseconds: 200_000_000)
-        // Send: approve permission ("y" + Enter) + select option (number + Enter)
-        // Input is buffered — CLI processes "y\r" first, then AskUserQuestion reads the number
-        await sendToTerminal("y\r\(index)")
+        // Step 1: Release the hook — respond with "ask" so Claude Code
+        // shows its normal terminal UI instead of skipping it
+        releaseHook()
+
+        // Step 2: Wait for Claude Code to render the question UI in the terminal
+        try? await Task.sleep(nanoseconds: 800_000_000) // 800ms
+
+        // Step 3: Send the option number to the terminal
+        await sendToTerminal("\(index)")
     }
 
     private func submitCustomText() {
@@ -211,76 +212,70 @@ struct AskUserQuestionView: View {
         let optionCount = context.questions.first?.options.count ?? 0
         DebugLogger.log("AskUser", "Custom text: \(text)")
         Task {
-            deferPermissionToTerminal()
-            try? await Task.sleep(nanoseconds: 200_000_000)
-            // Send: approve + Other option number + custom text
-            let otherIndex = optionCount + 1
-            await sendToTerminal("y\r\(otherIndex)\(text)")
+            releaseHook()
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            // Send "Other" option (last + 1), then the text
+            await sendToTerminal("\(optionCount + 1)")
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            await sendToTerminal(text)
         }
     }
 
-    /// Tell the hook socket to defer to CLI (respond "ask" instead of "allow")
-    private func deferPermissionToTerminal() {
-        if let permission = session.activePermission {
-            HookSocketServer.shared.respondToPermission(
-                toolUseId: permission.toolUseId,
-                decision: "ask"
-            )
-        }
+    /// Respond to the PermissionRequest hook with "ask" — this makes the
+    /// Python script exit without output, so Claude Code falls back to
+    /// showing its normal interactive UI in the terminal.
+    /// Using "allow" would skip the interactive UI entirely.
+    private func releaseHook() {
+        guard let permission = session.activePermission else { return }
+        HookSocketServer.shared.respondToPermission(
+            toolUseId: permission.toolUseId,
+            decision: "ask"
+        )
+        DebugLogger.log("AskUser", "Released hook with 'ask' for \(permission.toolUseId.prefix(12))")
     }
 
-    private func sendOptionToTerminal(index: Int) async {
-        await sendToTerminal("\(index)")
-    }
-
-    /// Send text to the terminal, followed by Enter.
-    /// Uses cmux input text for cmux, System Events keystroke for others.
+    /// Send text to the terminal via cmux input text or AppleScript.
     private func sendToTerminal(_ text: String) async {
         let termApp = session.terminalApp?.lowercased() ?? ""
 
-        // cmux: use input text API
-        if termApp.contains("cmux") {
+        // cmux: use native AppleScript input text
+        if termApp.contains("cmux") || CmuxTreeParser.isAvailable {
             let sent = CmuxTreeParser.sendText("\(text)\r", toCwd: session.cwd)
-            DebugLogger.log("AskUser", "Sent to cmux: \(sent)")
-            return
+            DebugLogger.log("AskUser", "Sent '\(text)' to cmux: \(sent)")
+            if sent { return }
         }
 
-        // Other terminals: System Events keystroke (no echo)
-        let appName: String
+        // iTerm2: write text
         if termApp.contains("iterm") {
-            appName = "iTerm2"
-        } else if termApp.contains("ghostty") {
-            appName = "Ghostty"
-        } else if termApp.contains("terminal") && !termApp.contains("wez") {
-            appName = "Terminal"
-        } else if termApp.contains("kitty") {
-            appName = "kitty"
-        } else if termApp.contains("wezterm") {
-            appName = "WezTerm"
-        } else if termApp.contains("warp") {
-            appName = "Warp"
-        } else {
-            DebugLogger.log("AskUser", "Unknown terminal: \(termApp), jumping")
-            await TerminalJumper.shared.jump(to: session)
-            return
+            let script = """
+            tell application "iTerm2"
+                tell current session of current tab of current window
+                    write text "\(text)"
+                end tell
+            end tell
+            """
+            if runAppleScript(script) {
+                DebugLogger.log("AskUser", "Sent '\(text)' via iTerm2")
+                return
+            }
         }
 
-        let escaped = text.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        let script = """
-        tell application "\(appName)" to activate
-        delay 0.1
-        tell application "System Events"
-            keystroke "\(escaped)"
-            key code 36
-        end tell
-        """
-        if runAppleScript(script) {
-            DebugLogger.log("AskUser", "Sent keystroke to \(appName)")
-        } else {
-            DebugLogger.log("AskUser", "keystroke failed, jumping")
-            await TerminalJumper.shared.jump(to: session)
+        // Terminal.app
+        if termApp.contains("terminal") && !termApp.contains("wez") {
+            let script = """
+            tell application "Terminal"
+                do script "\(text)" in selected tab of front window
+            end tell
+            """
+            if runAppleScript(script) {
+                DebugLogger.log("AskUser", "Sent '\(text)' via Terminal.app")
+                return
+            }
         }
+
+        // Fallback: jump to terminal
+        DebugLogger.log("AskUser", "No supported terminal, jumping")
+        await TerminalJumper.shared.jump(to: session)
     }
 
     private func runAppleScript(_ script: String) -> Bool {
