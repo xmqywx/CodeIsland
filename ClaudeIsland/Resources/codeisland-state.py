@@ -80,6 +80,11 @@ def main():
     session_id = data.get("session_id", "unknown")
     event = data.get("hook_event_name", "")
     cwd = data.get("cwd", "")
+
+    # Filter out probe/telemetry sessions from third-party tools (e.g. CodexBar)
+    PROBE_MARKERS = ["ClaudeProbe", "CodexBar"]
+    if any(marker in cwd for marker in PROBE_MARKERS):
+        sys.exit(0)
     tool_input = data.get("tool_input", {})
 
     # Get process info

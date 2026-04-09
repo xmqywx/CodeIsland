@@ -323,6 +323,25 @@ final class ServerConnection: ObservableObject {
         _ = try await URLSession.shared.data(for: request)
     }
 
+    private func getJSON(path: String) async throws -> [String: Any] {
+        let url = URL(string: "\(serverUrl)\(path)")!
+        var request = URLRequest(url: url)
+        if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        let (data, _) = try await URLSession.shared.data(for: request)
+        return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+    }
+
+    private func deleteRequest(path: String) async throws {
+        let url = URL(string: "\(serverUrl)\(path)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        let (_, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw URLError(.badServerResponse)
+        }
+    }
+
     // MARK: - Multi-device pairing API
 
     /// Register this Mac with the server. Lazy-allocates and returns a permanent shortCode.
@@ -357,5 +376,42 @@ final class ServerConnection: ObservableObject {
         } catch {
             Self.logger.error("uploadProjects failed: \(error.localizedDescription)")
         }
+    }
+
+    // MARK: - Linked devices management
+
+    /// A device linked to this Mac (typically an iPhone).
+    struct LinkedDeviceInfo: Identifiable {
+        let id: String       // deviceId
+        let name: String
+        let kind: String     // "iphone", "mac"
+        let createdAt: String
+    }
+
+    /// Fetch all devices linked to this Mac.
+    func fetchLinkedDevices() async -> [LinkedDeviceInfo] {
+        do {
+            let url = URL(string: "\(serverUrl)/v1/pairing/links")!
+            var request = URLRequest(url: url)
+            if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+            let (data, _) = try await URLSession.shared.data(for: request)
+            guard let array = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+            return array.compactMap { dict in
+                guard let id = dict["deviceId"] as? String,
+                      let name = dict["name"] as? String else { return nil }
+                let kind = dict["kind"] as? String ?? "unknown"
+                let createdAt = dict["createdAt"] as? String ?? ""
+                return LinkedDeviceInfo(id: id, name: name, kind: kind, createdAt: createdAt)
+            }
+        } catch {
+            Self.logger.error("fetchLinkedDevices failed: \(error.localizedDescription)")
+            return []
+        }
+    }
+
+    /// Unlink a paired device. Server cascade-deletes push tokens if no links remain.
+    func unlinkDevice(_ deviceId: String) async throws {
+        try await deleteRequest(path: "/v1/pairing/links/\(deviceId)")
+        Self.logger.info("Unlinked device \(deviceId)")
     }
 }

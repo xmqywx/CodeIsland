@@ -21,7 +21,7 @@ final class SyncManager: ObservableObject {
     @Published private(set) var isEnabled = false
     @Published private(set) var connectionState: ServerConnectionState = .disconnected
 
-    private var connection: ServerConnection?
+    private(set) var connection: ServerConnection?
     private var relay: MessageRelay?
     private var rpcExecutor: RPCExecutor?
     private var capabilityTimer: Timer?

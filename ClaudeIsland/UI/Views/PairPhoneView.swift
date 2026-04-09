@@ -55,6 +55,14 @@ struct PairPhoneRow: View {
     }
 }
 
+// MARK: - Key-capable borderless window
+
+/// A borderless NSWindow that can still become key, allowing
+/// TextField / text input to receive keyboard focus.
+private final class KeyableWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+}
+
 // MARK: - Floating QR Window
 
 @MainActor
@@ -75,8 +83,8 @@ final class QRPairingWindow {
 
         let hostingView = NSHostingView(rootView: contentView)
         let windowWidth: CGFloat = 280
-        let windowHeight: CGFloat = 460
-        let w = NSWindow(
+        let windowHeight: CGFloat = 560
+        let w = KeyableWindow(
             contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
             styleMask: [.borderless],
             backing: .buffered,
@@ -132,6 +140,8 @@ private struct QRPairingContentView: View {
     /// When true, force the "enter server URL" form even though a URL is
     /// already configured — user tapped the edit action to change it.
     @State private var isEditingServer = false
+    @State private var linkedDevices: [ServerConnection.LinkedDeviceInfo] = []
+    @State private var isUnlinking: String? = nil
 
     /// Solid brand fill for the popup card — bold, opaque, always readable.
     /// Replaces the old ultraThinMaterial which was so transparent the
@@ -173,7 +183,8 @@ private struct QRPairingContentView: View {
             }
         }
         .padding(20)
-        .frame(width: 280, height: 460)
+        .frame(width: 280)
+        .fixedSize(horizontal: false, vertical: true)
         .background(
             RoundedRectangle(cornerRadius: 20)
                 .fill(Self.cardFill)
@@ -185,6 +196,7 @@ private struct QRPairingContentView: View {
         )
         .onAppear {
             generateQRCode()
+            Task { await refreshLinkedDevices() }
         }
         .onChange(of: shortCode) { _, _ in
             generateQRCode()
@@ -252,6 +264,56 @@ private struct QRPairingContentView: View {
             .help("Change server URL")
 
             infoPillContent(icon: "desktopcomputer", text: deviceName)
+        }
+
+        // Linked devices section
+        if !linkedDevices.isEmpty {
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Linked Devices")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(Self.cardText.opacity(0.6))
+                    Spacer()
+                    Text("\(linkedDevices.count)")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(Self.cardText.opacity(0.5))
+                }
+                .padding(.horizontal, 4)
+                .padding(.bottom, 4)
+
+                ForEach(linkedDevices) { device in
+                    HStack(spacing: 6) {
+                        Image(systemName: device.kind == "iphone" ? "iphone" : "desktopcomputer")
+                            .font(.system(size: 10))
+                            .foregroundColor(Self.cardText.opacity(0.7))
+                        Text(device.name)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Self.cardText.opacity(0.9))
+                            .lineLimit(1)
+                        Spacer()
+                        Button {
+                            Task { await unlinkDevice(device) }
+                        } label: {
+                            if isUnlinking == device.id {
+                                ProgressView().controlSize(.small).scaleEffect(0.6)
+                            } else {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Self.cardText.opacity(0.4))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isUnlinking != nil)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Self.cardText.opacity(0.06))
+                    )
+                }
+            }
+            .padding(.top, 4)
         }
     }
 
@@ -393,6 +455,23 @@ private struct QRPairingContentView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(Capsule().fill(Self.cardText.opacity(0.1)))
+    }
+
+    private func refreshLinkedDevices() async {
+        guard let conn = SyncManager.shared.connection else { return }
+        linkedDevices = await conn.fetchLinkedDevices()
+    }
+
+    private func unlinkDevice(_ device: ServerConnection.LinkedDeviceInfo) async {
+        guard let conn = SyncManager.shared.connection else { return }
+        isUnlinking = device.id
+        do {
+            try await conn.unlinkDevice(device.id)
+            linkedDevices.removeAll { $0.id == device.id }
+        } catch {
+            // Silently ignore — device might already be unlinked
+        }
+        isUnlinking = nil
     }
 
     private func generateQRCode() {

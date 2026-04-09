@@ -75,7 +75,11 @@ English | [中文](README.zh-CN.md)
 
 <div align="center">
 
-## 📱 Coming Soon: **[Code Light](https://github.com/xmqywx/CodeLight)** — your iPhone companion 🐱✨
+## 📱 **[Code Light](https://github.com/xmqywx/CodeLight)** — your iPhone companion 🐱✨
+
+[![Download on the App Store](https://img.shields.io/badge/Download_on_the-App_Store-0D96F6?style=for-the-badge&logo=appstore&logoColor=white)](https://apps.apple.com/us/app/code-light/id6761744871)
+
+> **Note:** Code Light is available on the App Store in 147 countries/regions. **China mainland is currently unavailable** due to pending ICP filing requirements. We are working on it.
 
 > ### *Claude is thinking. You're at lunch. **You'll know.***
 
@@ -104,9 +108,9 @@ English | [中文](README.zh-CN.md)
 
 <div align="center">
 
-### What CodeIsland's next version unlocks
+### What the Code Light Sync module unlocks
 
-The next CodeIsland release ships the **Code Light Sync module** — turning the notch app into a bidirectional bridge between your Mac, the cloud, and your iPhone:
+CodeIsland's **Code Light Sync module** turns the notch app into a bidirectional bridge between your Mac, the cloud, and your iPhone:
 
 | Feature | What it means for you |
 |---|---|
@@ -122,8 +126,8 @@ The next CodeIsland release ships the **Code Light Sync module** — turning the
 
 </div>
 
-> **Status**: Code Light is currently in TestFlight, App Store submission in flight.
-> The CodeIsland Sync module ships as part of the next public release. ⭐ **[Star CodeIsland](https://github.com/xmqywx/CodeIsland)** + ⭐ **[Star Code Light](https://github.com/xmqywx/CodeLight)** to be notified.
+> **Status**: Code Light is **live on the [App Store](https://apps.apple.com/us/app/code-light/id6761744871)** (147 countries/regions, China mainland pending ICP filing).
+> The CodeIsland Sync module is included in v1.9.0+. ⭐ **[Star CodeIsland](https://github.com/xmqywx/CodeIsland)** + ⭐ **[Star Code Light](https://github.com/xmqywx/CodeLight)** to stay updated.
 
 ---
 
