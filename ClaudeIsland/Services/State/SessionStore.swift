@@ -75,6 +75,14 @@ actor SessionStore {
         case .permissionSocketFailed(let sessionId, let toolUseId):
             await processSocketFailure(sessionId: sessionId, toolUseId: toolUseId)
 
+        case .questionAnswered(let sessionId, _, _):
+            // TODO: Task 6 will implement full question answer processing
+            Self.logger.debug("Question answered for session \(sessionId.prefix(8), privacy: .public)")
+
+        case .questionSkipped(let sessionId, _):
+            // TODO: Task 6 will implement full question skip processing
+            Self.logger.debug("Question skipped for session \(sessionId.prefix(8), privacy: .public)")
+
         case .fileUpdated(let payload):
             await processFileUpdate(payload)
 

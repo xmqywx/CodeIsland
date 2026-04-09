@@ -386,6 +386,9 @@ class SoundManager: ObservableObject {
             case .waitingForApproval:
                 return .needsApproval
 
+            case .waitingForQuestion:
+                return .needsApproval
+
             case .waitingForInput:
                 // If coming from waitingForApproval, approval was denied and Claude stopped
                 if case .waitingForApproval = oldPhase {

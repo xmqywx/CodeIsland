@@ -116,6 +116,8 @@ struct NotchView: View {
         case .waitingForApproval:
             let status = session.pendingToolName.map { L10n.approveWhat($0) } ?? L10n.needsApproval
             return (project, status)
+        case .waitingForQuestion:
+            return (project, "Needs answer")
         case .waitingForInput:
             // Show smart summary when available, otherwise fall back to "done"
             let status = session.smartSummary ?? L10n.done
@@ -708,7 +710,7 @@ struct CollapsedNotchContent: View {
         switch phase {
         case .processing, .compacting:
             return TerminalColors.green
-        case .waitingForApproval:
+        case .waitingForApproval, .waitingForQuestion:
             return TerminalColors.amber
         case .waitingForInput:
             return TerminalColors.blue

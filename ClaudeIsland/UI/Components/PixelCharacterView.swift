@@ -235,7 +235,7 @@ extension SessionPhase {
             return .idle
         case .processing:
             return .working
-        case .waitingForApproval:
+        case .waitingForApproval, .waitingForQuestion:
             return .needsYou
         case .waitingForInput:
             return .done

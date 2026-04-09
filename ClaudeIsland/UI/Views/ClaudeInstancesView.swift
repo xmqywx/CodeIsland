@@ -310,7 +310,7 @@ struct ClaudeInstancesView: View {
     /// Approval requests share priority with processing to maintain stable ordering
     private func phasePriority(_ phase: SessionPhase) -> Int {
         switch phase {
-        case .waitingForApproval, .processing, .compacting: return 0
+        case .waitingForApproval, .waitingForQuestion, .processing, .compacting: return 0
         case .waitingForInput: return 1
         case .idle, .ended: return 2
         }
@@ -538,7 +538,7 @@ struct InstanceRow: View {
     private var accentColor: Color {
         switch session.phase {
         case .processing, .compacting: return Self.cyanColor
-        case .waitingForApproval: return Color(red: 0.96, green: 0.62, blue: 0.04) // amber
+        case .waitingForApproval, .waitingForQuestion: return Color(red: 0.96, green: 0.62, blue: 0.04) // amber
         case .waitingForInput: return Color(red: 0.29, green: 0.87, blue: 0.5)  // green
         case .idle, .ended: return Color.white.opacity(0.2)
         }
@@ -580,7 +580,7 @@ struct InstanceRow: View {
     private var animationState: AnimationState {
         switch session.phase {
         case .processing, .compacting: return .working
-        case .waitingForApproval: return .needsYou
+        case .waitingForApproval, .waitingForQuestion: return .needsYou
         case .waitingForInput: return .done
         case .idle, .ended: return .idle
         }
@@ -589,7 +589,7 @@ struct InstanceRow: View {
     /// Whether this session is active (not idle/ended)
     private var isActive: Bool {
         switch session.phase {
-        case .processing, .compacting, .waitingForApproval, .waitingForInput:
+        case .processing, .compacting, .waitingForApproval, .waitingForQuestion, .waitingForInput:
             return true
         case .idle, .ended:
             return false
