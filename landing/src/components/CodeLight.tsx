@@ -30,14 +30,14 @@ export default function CodeLight() {
 
   return (
     <section className="relative z-20 bg-deep py-20 sm:py-32 px-4 sm:px-6 noise overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_50%_at_50%_0%,rgba(124,58,237,0.08)_0%,transparent_60%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_50%_at_50%_0%,rgba(52,211,153,0.06)_0%,transparent_60%)]" />
 
       <div className="max-w-5xl mx-auto relative z-10">
         {/* Header */}
         <div className="text-center mb-12 sm:mb-16" style={{ animation: 'heroEnter 0.8s ease-out both' }}>
           <div className="flex items-center justify-center gap-2 mb-4">
-            <Smartphone size={16} className="text-purple-400" />
-            <span className="font-mono text-xs text-purple-400 uppercase tracking-[0.3em]">{t("codelight.tag")}</span>
+            <Smartphone size={16} className="text-green" />
+            <span className="font-mono text-xs text-green uppercase tracking-[0.3em]">{t("codelight.tag")}</span>
           </div>
 
           <h2 className="font-display text-3xl sm:text-5xl font-extrabold text-text-primary">
@@ -58,7 +58,7 @@ export default function CodeLight() {
           <img
             src={`${base}codelight/lockscreen.jpeg`}
             alt="Code Light Lock Screen"
-            className="w-full max-w-xl rounded-2xl shadow-[0_20px_80px_rgba(124,58,237,0.2)] border border-white/[0.06]"
+            className="w-full max-w-xl rounded-2xl shadow-[0_20px_80px_rgba(52,211,153,0.15)] border border-white/[0.06]"
           />
         </div>
 
@@ -82,14 +82,14 @@ export default function CodeLight() {
                 key={i}
                 className="group relative rounded-2xl p-5 transition-all duration-300 hover:scale-[1.02]"
                 style={{
-                  background: 'rgba(124,58,237,0.04)',
-                  border: '1px solid rgba(124,58,237,0.1)',
+                  background: 'rgba(52,211,153,0.04)',
+                  border: '1px solid rgba(52,211,153,0.12)',
                 }}
               >
-                <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ background: 'rgba(124,58,237,0.08)' }} />
+                <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ background: 'rgba(52,211,153,0.08)' }} />
                 <div className="relative z-10">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3" style={{ background: 'rgba(124,58,237,0.15)' }}>
-                    <f.Icon size={18} className="text-purple-400" />
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3" style={{ background: 'rgba(52,211,153,0.15)' }}>
+                    <f.Icon size={18} className="text-green" />
                   </div>
                   <h4 className="text-sm font-bold text-text-primary mb-1">{f.title}</h4>
                   <p className="text-xs text-text-muted leading-relaxed">{f.desc}</p>
@@ -111,7 +111,7 @@ export default function CodeLight() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <a
               href="https://apps.apple.com/us/app/code-light/id6761744871"
-              className="inline-flex items-center gap-2.5 px-8 py-3.5 rounded-xl font-mono text-sm text-white bg-purple-600 transition-all duration-300 hover:scale-[1.03] hover:bg-purple-500 hover:shadow-[0_0_30px_rgba(124,58,237,0.3)]"
+              className="inline-flex items-center gap-2.5 px-8 py-3.5 rounded-xl font-mono text-sm text-deep font-bold bg-green transition-all duration-300 hover:scale-[1.03] hover:shadow-[0_0_30px_rgba(52,211,153,0.3)]"
             >
               <Download size={16} />
               {t("codelight.appstore")}
@@ -119,7 +119,7 @@ export default function CodeLight() {
 
             <a
               href="https://github.com/xmqywx/CodeLight"
-              className="inline-flex items-center gap-2.5 glass px-8 py-3.5 rounded-xl font-mono text-sm text-purple-300 transition-all duration-300 hover:scale-[1.03] hover:text-text-primary hover:shadow-[0_0_30px_rgba(124,58,237,0.15)]"
+              className="inline-flex items-center gap-2.5 glass px-8 py-3.5 rounded-xl font-mono text-sm text-green/80 transition-all duration-300 hover:scale-[1.03] hover:text-text-primary hover:shadow-[0_0_30px_rgba(52,211,153,0.1)]"
             >
               <GithubIcon size={16} />
               <Star size={14} />
