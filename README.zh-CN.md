@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="ClaudeIsland/Assets.xcassets/AppIcon.appiconset/icon_128x128.png" width="128" height="128" alt="喵喵岛" />
+<img src="marketing/miomio-logo.jpg" width="200" alt="喵喵岛" />
 
 # 喵喵岛 MioIsland
 
