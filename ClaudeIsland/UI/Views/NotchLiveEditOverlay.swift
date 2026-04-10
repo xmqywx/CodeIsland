@@ -341,7 +341,7 @@ struct NotchLiveEditOverlay: View {
         Button {
             applyHeightStep(direction: direction)
         } label: {
-            Image(systemName: direction > 0 ? "chevron.up" : "chevron.down")
+            Image(systemName: direction > 0 ? "chevron.down" : "chevron.up")
                 .font(.system(size: 14, weight: .bold))
                 .foregroundColor(hasHardwareNotch ? .white.opacity(0.35) : .black)
                 .frame(width: 32, height: 32)
