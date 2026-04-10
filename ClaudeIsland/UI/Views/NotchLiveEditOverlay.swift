@@ -205,12 +205,13 @@ struct NotchLiveEditOverlay: View {
                 arrowButton(direction: +1, label: "Grow notch")
                     .position(x: notchRightX + 28, y: notchVerticalCenter)
 
-                // 4b. Height arrow buttons (▲ ▼) above/below the notch.
+                // 4b. Height arrow buttons (▲ ▼) below the notch.
+                // Both sit under the notch bottom edge; ▲ increases, ▼ decreases.
                 heightArrowButton(direction: +1, label: "Increase notch height")
-                    .position(x: notchCenterX, y: -10)
+                    .position(x: notchCenterX - 22, y: visibleNotchHeight + 14)
 
                 heightArrowButton(direction: -1, label: "Decrease notch height")
-                    .position(x: notchCenterX, y: visibleNotchHeight + 14)
+                    .position(x: notchCenterX + 22, y: visibleNotchHeight + 14)
 
                 // 5. Live width + offset readout — small monospaced
                 //    label below the notch so the user can see exact
