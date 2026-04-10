@@ -8,7 +8,7 @@ const GithubIcon = ({ size = 16 }: { size?: number }) => (
   </svg>
 )
 
-const REPO = "xmqywx/CodeIsland"
+const REPO = "MioMioOS/MioIsland"
 
 function useGitHubStats() {
   const [stats, setStats] = useState({ stars: 0, forks: 0, contributors: 0 })

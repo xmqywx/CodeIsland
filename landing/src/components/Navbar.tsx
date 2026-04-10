@@ -38,7 +38,7 @@ export default function Navbar() {
                 { label: t("nav.demo"), href: "#demo" },
                 { label: t("nav.features"), href: "#features" },
                 { label: t("nav.howItWorks"), href: "#how-it-works" },
-                { label: t("nav.github"), href: "https://github.com/xmqywx/CodeIsland" },
+                { label: t("nav.github"), href: "https://github.com/MioMioOS/MioIsland" },
               ].map((item) => (
                 <a
                   key={item.label}
@@ -70,7 +70,7 @@ export default function Navbar() {
 
             {/* Download button */}
             <a
-              href="https://github.com/xmqywx/CodeIsland/releases"
+              href="https://github.com/MioMioOS/MioIsland/releases"
               className="flex items-center gap-1.5 sm:gap-2 bg-green/10 text-green border border-green/20 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium hover:bg-green/20 hover:border-green/30 transition-all"
             >
               <Download size={14} />

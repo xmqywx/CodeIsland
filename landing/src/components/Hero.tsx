@@ -50,7 +50,7 @@ export default function Hero() {
 
               <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center px-4 sm:px-0" style={{ animation: 'heroEnter 1s ease-out 0.3s both' }}>
                 <a
-                  href="https://github.com/xmqywx/CodeIsland/releases"
+                  href="https://github.com/MioMioOS/MioIsland/releases"
                   className="group flex items-center justify-center gap-2.5 bg-green text-deep px-8 py-3.5 rounded-xl font-mono text-sm font-bold transition-all duration-300 hover:shadow-[0_0_40px_rgba(52,211,153,0.3)] hover:scale-[1.03]"
                 >
                   {t("hero.download")}
@@ -67,7 +67,7 @@ export default function Hero() {
                   {t("community.join")}
                 </button>
                 <a
-                  href="https://github.com/xmqywx/CodeIsland"
+                  href="https://github.com/MioMioOS/MioIsland"
                   className="group flex items-center justify-center gap-2.5 glass px-8 py-3.5 rounded-xl font-mono text-sm text-purple-pale transition-all duration-300 hover:scale-[1.03] hover:text-text-primary"
                 >
                   <GithubIcon size={16} />
@@ -77,7 +77,7 @@ export default function Hero() {
             </div>
           }
           badge={
-            <a href="https://github.com/xmqywx/CodeIsland">
+            <a href="https://github.com/MioMioOS/MioIsland">
               <img src={logo} alt="CodeIsland" className="h-10 w-10 rounded-lg -rotate-12 transform shadow-lg" />
             </a>
           }

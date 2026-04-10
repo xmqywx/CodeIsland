@@ -118,7 +118,7 @@ export default function CodeLight() {
             </a>
 
             <a
-              href="https://github.com/xmqywx/CodeLight"
+              href="https://github.com/MioMioOS/CodeLight"
               className="inline-flex items-center gap-2.5 glass px-8 py-3.5 rounded-xl font-mono text-sm text-green/80 transition-all duration-300 hover:scale-[1.03] hover:text-text-primary hover:shadow-[0_0_30px_rgba(52,211,153,0.1)]"
             >
               <GithubIcon size={16} />

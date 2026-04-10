@@ -59,7 +59,7 @@ const translations = {
   // HowItWorks
   "how.tag": { zh: "快速上手", en: "GET STARTED" },
   "how.title": { zh: "两步开始", en: "Two steps to flow" },
-  "how.install.cmd": { zh: "brew install xmqywx/codeisland/codeisland", en: "brew install xmqywx/codeisland/codeisland" },
+  "how.install.cmd": { zh: "brew install MioMioOS/tap/mioisland", en: "brew install MioMioOS/tap/mioisland" },
   "how.install.title": { zh: "安装", en: "Install" },
   "how.install.or": { zh: "或", en: "or" },
   "how.install.dmg": { zh: "下载 DMG 安装包", en: "Download DMG" },

@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Download, Copy, Check, ExternalLink, Rocket, Zap } from "lucide-react"
 import { useI18n } from "../lib/i18n"
 
-const BREW_CMD = "brew install xmqywx/codeisland/codeisland"
+const BREW_CMD = "brew install MioMioOS/tap/mioisland"
 
 export default function HowItWorks() {
   const { t } = useI18n()
@@ -53,7 +53,7 @@ export default function HowItWorks() {
           </div>
 
           <a
-            href="https://github.com/xmqywx/CodeIsland/releases"
+            href="https://github.com/MioMioOS/MioIsland/releases"
             className="flex items-center justify-center gap-2 w-full py-3 rounded-xl text-sm font-mono text-green/80 hover:text-green transition-all duration-200 hover:bg-green/[0.06] border border-green/10 hover:border-green/20"
           >
             <Download size={14} />

@@ -27,7 +27,7 @@ export default function Footer() {
           <span className="font-mono text-xs text-text-muted/60">CC BY-NC 4.0</span>
         </a>
         <div className="flex items-center gap-5">
-          <a href="https://github.com/xmqywx/CodeIsland" className="text-text-muted hover:text-text-primary transition-colors" aria-label="GitHub"><GithubIcon size={16} /></a>
+          <a href="https://github.com/MioMioOS/MioIsland" className="text-text-muted hover:text-text-primary transition-colors" aria-label="GitHub"><GithubIcon size={16} /></a>
           <a href="https://x.com/LinkCarey81479" className="text-text-muted hover:text-text-primary transition-colors" aria-label="X"><XIcon size={16} /></a>
         </div>
         <p className="flex items-center gap-1.5 text-xs text-text-muted/60">
