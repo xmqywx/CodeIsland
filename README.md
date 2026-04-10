@@ -27,52 +27,6 @@ English | [中文](README.zh-CN.md)
 
 ---
 
-> ## ⚠️ Installation Notice (v1.9.0-rc1 and later)
->
-> The latest builds are **code-signed** with our Developer ID but **not yet notarized** by Apple. We are actively working with Apple to resolve a server-side issue (notarization error 7000) on their end. The app binary is identical to previous notarized releases — only the Apple notary ticket is missing.
->
-> **System requirement:** macOS **15.0** or later (universal binary, supports both Apple Silicon and Intel).
->
-> **First launch — choose one:**
->
-> **Option A — Right-click to open (recommended):**
-> 1. Download `MioIsland-vX.Y.Z.zip` and unzip
-> 2. Move `Code Island.app` to `/Applications`
-> 3. **Right-click** the app → **Open** → click **Open** in the dialog
-> 4. Subsequent launches will work normally with a double-click
->
-> **Option B — Command line (one-liner):**
-> ```bash
-> xattr -dr com.apple.quarantine "/Applications/Code Island.app" && open "/Applications/Code Island.app"
-> ```
->
-> Once Apple resolves the notarization issue, future releases will install with a normal double-click. Thank you for your patience.
->
-> ---
->
-> ## ⚠️ 安装说明（v1.9.0-rc1 及后续版本）
->
-> 最新版本**已使用 Developer ID 签名**，但**暂未完成 Apple 公证**。我们正在积极联系 Apple 处理后台的配置问题（公证错误 7000）。应用代码与之前已公证的版本完全一致，仅缺少 Apple 公证票。
->
-> **系统要求：** macOS **15.0** 或更高（通用二进制，同时支持 Apple Silicon 和 Intel 芯片）。
->
-> **首次打开 —— 任选一种方式：**
->
-> **方式 A —— 右键打开（推荐）：**
-> 1. 下载 `MioIsland-vX.Y.Z.zip` 并解压
-> 2. 把 `Code Island.app` 拖到 `/应用程序`（Applications）
-> 3. **右键** 应用 → **打开** → 在弹窗中再次点 **打开**
-> 4. 之后双击即可正常启动，不会再有提示
->
-> **方式 B —— 终端命令（一行搞定）：**
-> ```bash
-> xattr -dr com.apple.quarantine "/Applications/Code Island.app" && open "/Applications/Code Island.app"
-> ```
->
-> Apple 处理完后，后续版本将恢复正常双击安装体验。感谢理解。
-
----
-
 <div align="center">
 
 ## 📱 **[Code Light](https://github.com/MioMioOS/CodeLight)** — your iPhone companion 🐱✨
@@ -357,14 +311,22 @@ MioIsland auto-detects your terminal from the process tree:
 
 ## Install
 
-**Download** the latest `.dmg` from [Releases](https://github.com/MioMioOS/MioIsland/releases), open it, drag to Applications.
+**Download** the latest `.zip` from [Releases](https://github.com/MioMioOS/MioIsland/releases), unzip, and drag `Code Island.app` to `/Applications`.
 
-> **macOS Gatekeeper warning:** If you see "Code Island is damaged and can't be opened", run this in Terminal:
-> ```bash
-> sudo xattr -rd com.apple.quarantine /Applications/Code\ Island.app
-> ```
+**First launch:** The app is code-signed with our Developer ID but not yet notarized by Apple (we're working with Apple to resolve a server-side configuration issue). You need to do one of the following on first launch:
 
-### Build from Source
+- **Right-click** → **Open** → click **Open** in the dialog (recommended), or
+- Run in Terminal: `xattr -dr com.apple.quarantine "/Applications/Code Island.app"`
+
+After the first launch, subsequent opens work normally with a double-click.
+
+### Requirements
+
+- macOS 15+ (Sequoia) — universal binary (Apple Silicon + Intel)
+- MacBook with notch (floating mode available on external displays)
+
+<details>
+<summary><b>Build from Source</b></summary>
 
 ```bash
 git clone https://github.com/MioMioOS/MioIsland.git
@@ -375,11 +337,7 @@ xcodebuild -project ClaudeIsland.xcodeproj -scheme ClaudeIsland \
   DEVELOPMENT_TEAM="" build
 ```
 
-### Requirements
-
-- macOS 14+ (Sonoma)
-- MacBook with notch (floating mode on external displays)
-- [Bun](https://bun.sh) for accurate buddy stats (optional, falls back to basic info)
+</details>
 
 ## How It Works
 
