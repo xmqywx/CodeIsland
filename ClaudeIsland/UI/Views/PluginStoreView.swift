@@ -13,6 +13,8 @@ struct PluginStoreView: View {
     @ObservedObject private var themeRegistry = ThemeRegistry.shared
     @ObservedObject private var buddyRegistry = BuddyRegistry.shared
     @ObservedObject private var store = NotchCustomizationStore.shared
+    @ObservedObject private var downloader = PluginDownloader.shared
+    @State private var downloadingId: String?
 
     @State private var selectedCategory = 0
 
@@ -35,11 +37,25 @@ struct PluginStoreView: View {
             default: EmptyView()
             }
 
+            // Available from registry
+            if !downloader.notInstalled.isEmpty {
+                Divider().opacity(0.2)
+                Text("Available")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.5))
+                ForEach(downloader.notInstalled) { entry in
+                    availableRow(entry)
+                }
+            }
+
             Spacer()
 
             pluginDirHint
         }
         .padding(20)
+        .task {
+            await downloader.fetchRegistry()
+        }
     }
 
     // MARK: - Themes
@@ -199,6 +215,54 @@ struct PluginStoreView: View {
                     .foregroundColor(.red.opacity(0.6))
             }
             .buttonStyle(.plain)
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.05)))
+    }
+
+    // MARK: - Available plugins from registry
+
+    private func availableRow(_ entry: PluginDownloader.RegistryEntry) -> some View {
+        HStack {
+            Image(systemName: entry.type == .theme ? "paintpalette" :
+                    entry.type == .buddy ? "figure.wave" : "music.note")
+                .foregroundColor(.white.opacity(0.5))
+                .frame(width: 16)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.name)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.8))
+                if let desc = entry.description {
+                    Text(desc)
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.4))
+                        .lineLimit(1)
+                }
+            }
+            Spacer()
+
+            if entry.price > 0 {
+                Text("$\(String(format: "%.2f", Double(entry.price) / 100))")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.5))
+            }
+
+            if downloadingId == entry.id {
+                ProgressView()
+                    .controlSize(.small)
+                    .scaleEffect(0.7)
+            } else {
+                Button(entry.price > 0 ? "Buy" : "Install") {
+                    Task {
+                        downloadingId = entry.id
+                        try? await downloader.download(entry)
+                        downloadingId = nil
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.green.opacity(0.8))
+            }
         }
         .padding(8)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.05)))
