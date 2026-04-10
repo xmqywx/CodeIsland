@@ -205,17 +205,16 @@ struct NotchLiveEditOverlay: View {
                 arrowButton(direction: +1, label: "Grow notch")
                     .position(x: notchRightX + 28, y: notchVerticalCenter)
 
-                // 4b. Height arrow buttons (▲ ▼) below the notch.
-                // Both sit under the notch bottom edge; ▲ increases, ▼ decreases.
-                heightArrowButton(direction: +1, label: "Increase notch height")
+                // 4b. Height arrow buttons (▼ ▲) below the notch.
+                // Left: decrease height, Right: increase height.
+                heightArrowButton(direction: -1, label: "Decrease notch height")
                     .position(x: notchCenterX - 22, y: visibleNotchHeight + 14)
 
-                heightArrowButton(direction: -1, label: "Decrease notch height")
+                heightArrowButton(direction: +1, label: "Increase notch height")
                     .position(x: notchCenterX + 22, y: visibleNotchHeight + 14)
 
                 // 5. Live width + offset readout — small monospaced
-                //    label below the notch so the user can see exact
-                //    numbers as they drag the arrows / move the notch.
+                //    label below the height arrows so it doesn't overlap.
                 Text(readoutText)
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundColor(.white.opacity(0.7))
@@ -224,7 +223,7 @@ struct NotchLiveEditOverlay: View {
                     .background(
                         Capsule().fill(Color.black.opacity(0.6))
                     )
-                    .position(x: notchCenterX, y: visibleNotchHeight + 24)
+                    .position(x: notchCenterX, y: visibleNotchHeight + 44)
                     .accessibilityHidden(true)
 
                 // 6. Action row + Reset + Save/Cancel — stacked
@@ -314,7 +313,7 @@ struct NotchLiveEditOverlay: View {
                         .accessibilityLabel("Cancel notch customization")
                     }
                 }
-                .position(x: notchCenterX, y: visibleNotchHeight + 70)
+                .position(x: notchCenterX, y: visibleNotchHeight + 90)
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
         }
