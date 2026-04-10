@@ -87,6 +87,17 @@ final class NotchCustomizationStoreTests: XCTestCase {
         XCTAssertEqual(decoded.theme, .paper)
     }
 
+    func test_updateGeometry_mutatesAndPersists() throws {
+        let store = NotchCustomizationStore()
+        store.updateGeometry(for: "42") { $0.notchHeight = 55 }
+
+        XCTAssertEqual(store.customization.geometry(for: "42").notchHeight, 55)
+
+        let data = try XCTUnwrap(UserDefaults.standard.data(forKey: v1Key))
+        let decoded = try JSONDecoder().decode(NotchCustomization.self, from: data)
+        XCTAssertEqual(decoded.geometry(for: "42").notchHeight, 55)
+    }
+
     // MARK: - Edit lifecycle
 
     func test_enterEditMode_setsIsEditing() {

@@ -61,6 +61,11 @@ final class NotchCustomizationStore: ObservableObject {
         save()
     }
 
+    /// Convenience for updating geometry of a specific screen.
+    func updateGeometry(for screenID: String, _ mutation: (inout ScreenGeometry) -> Void) {
+        update { $0.updateGeometry(for: screenID, mutation) }
+    }
+
     // MARK: - Live edit lifecycle
 
     func enterEditMode() {

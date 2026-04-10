@@ -50,4 +50,11 @@ extension NSScreen {
     var hasPhysicalNotch: Bool {
         safeAreaInsets.top > 0
     }
+
+    /// Stable string identifier for per-screen settings persistence.
+    /// Derived from CGDirectDisplayID.
+    var persistentID: String {
+        let id = (deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID) ?? 0
+        return String(id)
+    }
 }
