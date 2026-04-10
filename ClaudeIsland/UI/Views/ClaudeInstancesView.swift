@@ -34,6 +34,10 @@ struct ClaudeInstancesView: View {
                             .notchFont(11)
                             .notchSecondaryForeground()
                         Spacer()
+
+                        // Plugin header slot (e.g. music button)
+                        PluginSlotView(slot: "header")
+
                         Button {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                 viewModel.toggleMenu()
@@ -198,6 +202,10 @@ struct ClaudeInstancesView: View {
             // Top bar with settings
             HStack {
                 Spacer()
+
+                // Plugin header slot
+                PluginSlotView(slot: "header")
+
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                         viewModel.toggleMenu()

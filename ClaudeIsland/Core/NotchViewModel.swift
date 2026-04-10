@@ -175,6 +175,15 @@ class NotchViewModel: ObservableObject {
         self.hasPhysicalNotch = hasPhysicalNotch
         setupEventHandlers()
         observeSelectors()
+
+        // Listen for plugin open requests (from plugin header buttons etc.)
+        NotificationCenter.default.addObserver(forName: NSNotification.Name("com.codeisland.openPlugin"), object: nil, queue: .main) { [weak self] notification in
+            guard let pluginId = notification.userInfo?["pluginId"] as? String else { return }
+            Task { @MainActor in
+                self?.notchOpen(reason: .hover)
+                self?.showPlugin(pluginId)
+            }
+        }
     }
 
     private func observeSelectors() {

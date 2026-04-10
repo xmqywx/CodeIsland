@@ -28,6 +28,15 @@ final class NativePluginManager: ObservableObject {
         func makeView() -> NSView? {
             instance.perform(Selector(("makeView")))?.takeUnretainedValue() as? NSView
         }
+
+        /// Query a plugin for a UI slot view.
+        /// Slots: "header", "footer", "overlay", "sessionItem"
+        func viewForSlot(_ slot: String, context: [String: Any] = [:]) -> NSView? {
+            let sel = NSSelectorFromString("viewForSlot:context:")
+            guard instance.responds(to: sel) else { return nil }
+            let result = instance.perform(sel, with: slot, with: context)
+            return result?.takeUnretainedValue() as? NSView
+        }
     }
 
     private var pluginsDir: URL {

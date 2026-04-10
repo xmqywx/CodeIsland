@@ -452,6 +452,9 @@ struct NotchView: View {
             case .plugin(let pluginId):
                 PluginContentView(pluginId: pluginId, viewModel: viewModel)
             }
+
+            // Plugin footer slot (e.g. mini player bar)
+            PluginSlotView(slot: "footer")
         }
         .frame(width: notchSize.width - 24) // Fixed width to prevent text reflow
         // Removed .id() - was causing view recreation and performance issues
