@@ -315,6 +315,13 @@ class SoundManager: ObservableObject {
         guard !globalMute else { return }
         guard isEnabled(event) else { return }
 
+        // If user has a plugin notification sound pack active, use that instead
+        if let pluginId = NotchCustomizationStore.shared.customization.notificationSoundPlugin,
+           PluginSoundManager.shared.hasSound(pluginId: pluginId, event: event) {
+            PluginSoundManager.shared.playNotification(pluginId: pluginId, event: event)
+            return
+        }
+
         let currentVolume = volume
         let segments = tonePattern(for: event)
         let isChord = (event == .approvalGranted)
