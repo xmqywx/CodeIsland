@@ -62,6 +62,11 @@ struct NotchMenuView: View {
                     // days so the menu stays compact when you didn't work.
                     DailyReportCard(viewModel: viewModel)
 
+                    // Loaded plugins
+                    ForEach(NativePluginManager.shared.loadedPlugins) { plugin in
+                        PluginMenuRow(plugin: plugin, viewModel: viewModel)
+                    }
+
                     PairPhoneRow()
                     SystemSettingsRow()
                 }
@@ -79,6 +84,45 @@ struct NotchMenuView: View {
                 Task { await AnalyticsCollector.shared.recomputeIfNeeded() }
             }
         }
+    }
+}
+
+// MARK: - Plugin Menu Row
+
+struct PluginMenuRow: View {
+    let plugin: NativePluginManager.LoadedPlugin
+    let viewModel: NotchViewModel
+    @State private var isHovered = false
+
+    var body: some View {
+        Button {
+            viewModel.showPlugin(plugin.id)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: plugin.icon)
+                    .font(.system(size: 12))
+                    .opacity(isHovered ? 1 : 0.6)
+                    .frame(width: 16)
+
+                Text(plugin.name)
+                    .font(.system(size: 13, weight: .medium))
+                    .opacity(isHovered ? 1 : 0.7)
+
+                Spacer()
+
+                Text("v\(plugin.version)")
+                    .font(.system(size: 9))
+                    .opacity(0.3)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isHovered ? Color.white.opacity(0.08) : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
     }
 }
 

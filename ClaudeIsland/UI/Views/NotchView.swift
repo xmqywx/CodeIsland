@@ -449,6 +449,8 @@ struct NotchView: View {
                     sessionMonitor: sessionMonitor,
                     viewModel: viewModel
                 )
+            case .plugin(let pluginId):
+                PluginContentView(pluginId: pluginId, viewModel: viewModel)
             }
         }
         .frame(width: notchSize.width - 24) // Fixed width to prevent text reflow

@@ -22,8 +22,12 @@ final class NativePluginManager: ObservableObject {
         let name: String
         let icon: String
         let version: String
-        let instance: MioPlugin
+        let instance: NSObject
         let bundle: Bundle
+
+        func makeView() -> NSView? {
+            instance.perform(Selector(("makeView")))?.takeUnretainedValue() as? NSView
+        }
     }
 
     private var pluginsDir: URL {
@@ -64,54 +68,75 @@ final class NativePluginManager: ObservableObject {
             return
         }
 
-        guard bundle.load() else {
-            Self.log.warning("Failed to load bundle \(url.lastPathComponent)")
+        do {
+            try bundle.loadAndReturnError()
+        } catch {
+            NSLog("[NativePluginManager] Failed to load bundle %@: %@", url.lastPathComponent, error.localizedDescription)
             return
         }
 
-        guard let principalClass = bundle.principalClass as? (NSObject & MioPlugin).Type else {
-            Self.log.warning("Bundle \(url.lastPathComponent) has no valid MioPlugin principal class")
+        guard let principalClass = bundle.principalClass as? NSObject.Type else {
+            Self.log.warning("Bundle \(url.lastPathComponent) has no NSObject principal class")
             return
         }
 
         let instance = principalClass.init()
-        guard let plugin = instance as? MioPlugin else {
-            Self.log.warning("Principal class of \(url.lastPathComponent) does not conform to MioPlugin")
+
+        // Use ObjC runtime to call MioPlugin methods — the protocol is defined
+        // in both the app and the plugin, but they're different modules so we
+        // can't cast directly. Instead we use responds(to:) + perform().
+        guard instance.responds(to: Selector(("id"))),
+              instance.responds(to: Selector(("name"))),
+              instance.responds(to: Selector(("makeView"))) else {
+            Self.log.warning("Principal class of \(url.lastPathComponent) missing MioPlugin methods")
             return
         }
+
+        let pluginId = instance.value(forKey: "id") as? String ?? url.lastPathComponent
+        let pluginName = instance.value(forKey: "name") as? String ?? pluginId
+        let pluginIcon = instance.value(forKey: "icon") as? String ?? "puzzlepiece"
+        let pluginVersion = instance.value(forKey: "version") as? String ?? "0.0.0"
 
         // Check for duplicate IDs
-        if loadedPlugins.contains(where: { $0.id == plugin.id }) {
-            Self.log.warning("Duplicate plugin ID: \(plugin.id), skipping")
+        if loadedPlugins.contains(where: { $0.id == pluginId }) {
+            Self.log.warning("Duplicate plugin ID: \(pluginId), skipping")
             return
         }
 
-        plugin.activate()
+        // Activate
+        if instance.responds(to: Selector(("activate"))) {
+            instance.perform(Selector(("activate")))
+        }
 
         let loaded = LoadedPlugin(
-            id: plugin.id,
-            name: plugin.name,
-            icon: plugin.icon,
-            version: plugin.version,
-            instance: plugin,
+            id: pluginId,
+            name: pluginName,
+            icon: pluginIcon,
+            version: pluginVersion,
+            instance: instance,
             bundle: bundle
         )
         loadedPlugins.append(loaded)
-        Self.log.info("Loaded plugin: \(plugin.name) v\(plugin.version) (\(plugin.id))")
+        Self.log.info("Loaded plugin: \(pluginName) v\(pluginVersion) (\(pluginId))")
     }
 
     // MARK: - Unloading
 
     func unloadAll() {
         for plugin in loadedPlugins {
-            plugin.instance.deactivate()
+            if plugin.instance.responds(to: Selector(("deactivate"))) {
+                plugin.instance.perform(Selector(("deactivate")))
+            }
         }
         loadedPlugins.removeAll()
     }
 
     func unload(id: String) {
         guard let index = loadedPlugins.firstIndex(where: { $0.id == id }) else { return }
-        loadedPlugins[index].instance.deactivate()
+        let plugin = loadedPlugins[index]
+        if plugin.instance.responds(to: Selector(("deactivate"))) {
+            plugin.instance.perform(Selector(("deactivate")))
+        }
         loadedPlugins.remove(at: index)
         Self.log.info("Unloaded plugin: \(id)")
     }

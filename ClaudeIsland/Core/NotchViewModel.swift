@@ -28,6 +28,7 @@ enum NotchContentType: Equatable {
     case menu
     case chat(SessionState)
     case question(SessionState)
+    case plugin(String)  // plugin ID
 
     var id: String {
         switch self {
@@ -35,6 +36,7 @@ enum NotchContentType: Equatable {
         case .menu: return "menu"
         case .chat(let session): return "chat-\(session.sessionId)"
         case .question(let session): return "question-\(session.sessionId)"
+        case .plugin(let pluginId): return "plugin-\(pluginId)"
         }
     }
 }
@@ -124,6 +126,11 @@ class NotchViewModel: ObservableObject {
             return CGSize(
                 width: min(screenRect.width * 0.4, 480),
                 height: 320
+            )
+        case .plugin:
+            return CGSize(
+                width: min(screenRect.width * 0.4, 480),
+                height: 300
             )
         case .instances:
             let baseHeight: CGFloat = 100
@@ -381,6 +388,10 @@ class NotchViewModel: ObservableObject {
 
     func toggleMenu() {
         contentType = contentType == .menu ? .instances : .menu
+    }
+
+    func showPlugin(_ pluginId: String) {
+        contentType = .plugin(pluginId)
     }
 
     func showChat(for session: SessionState) {
