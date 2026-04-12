@@ -175,7 +175,7 @@ final class ServerConnection: ObservableObject {
             if let jsonData = content.data(using: .utf8),
                let parsed = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
                let msgType = parsed["type"] as? String {
-                let phoneOriginated = Set(["user", "key"])
+                let phoneOriginated = Set(["user", "key", "read-screen"])
                 if !phoneOriginated.contains(msgType) { return }
             }
             let sessionTag = dict["sessionTag"] as? String

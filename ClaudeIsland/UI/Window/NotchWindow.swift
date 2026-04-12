@@ -46,7 +46,8 @@ class NotchPanel: NSPanel {
             .ignoresCycle
         ]
 
-        // Above the menu bar
+        // Above the menu bar. Dynamic elevation happens in
+        // NotchWindowController when the notch opens/closes.
         level = .mainMenu + 3
 
         // Enable tooltips even when app is inactive (needed for panel windows)

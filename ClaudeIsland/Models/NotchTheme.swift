@@ -64,6 +64,12 @@ extension NotchPalette {
                 fg: .black,
                 secondaryFg: Color(white: 0, opacity: 0.5)
             )
+        case .rosegold, .ocean, .aurora, .mocha, .lavender, .cherry:
+            return NotchPalette(
+                bg: .black,
+                fg: .white,
+                secondaryFg: Color(white: 1, opacity: 0.4)
+            )
         }
     }
 }
@@ -80,6 +86,12 @@ extension NotchThemeID {
         case .cyber:    return "Cyber"
         case .mint:     return "Mint"
         case .sunset:   return "Sunset"
+        case .rosegold: return "Rose Gold"
+        case .ocean:    return "Ocean"
+        case .aurora:   return "Aurora"
+        case .mocha:    return "Mocha"
+        case .lavender: return "Lavender"
+        case .cherry:   return "Cherry"
         }
     }
 }

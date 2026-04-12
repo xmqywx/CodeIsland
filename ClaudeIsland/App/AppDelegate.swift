@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import UserNotifications
 
-class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+@MainActor class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     private var windowManager: WindowManager?
     private var screenObserver: ScreenObserver?
 
@@ -25,6 +25,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         }
 
         HookInstaller.installIfNeeded()
+        CodexFeatureGate.shared.onLaunch()
+        logHookHealth()
 
         // Request notification permission — .accessory policy blocks the system dialog,
         // so temporarily switch to .regular when permission is not yet determined.
@@ -78,6 +80,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         completionHandler([.banner, .list])
+    }
+
+    private func logHookHealth() {
+        let reports = [HookHealthCheck.checkClaude(), HookHealthCheck.checkCodex()]
+        for report in reports where !report.isHealthy {
+            for issue in report.errors {
+                NSLog("[CodeIsland] Hook health (\(report.agent)): \(issue)")
+            }
+        }
     }
 
     private func ensureSingleInstance() -> Bool {

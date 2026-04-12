@@ -98,6 +98,21 @@ final class TerminalWriter {
         return result != nil
     }
 
+    /// Snapshot the current cmux surface (visible pane + scrollback) as plain text.
+    /// Used by the phone's "read screen" button so the user can check terminal state
+    /// without injecting any input. Returns nil if the surface can't be located.
+    func readScreen(claudeUuid: String, cwd: String? = nil, livePid: Int? = nil, lines: Int = 500) async -> String? {
+        guard let (wsId, surfId) = findCmuxTarget(claudeUuid: claudeUuid, cwd: cwd, livePid: livePid),
+              let surfId else {
+            Self.logger.warning("readScreen: no cmux target for uuid=\(claudeUuid.prefix(8))")
+            return nil
+        }
+        let raw = cmuxRun(["read-screen", "--workspace", wsId, "--surface", surfId, "--scrollback", "--lines", "\(lines)"]) ?? ""
+        let split = raw.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)
+        let cleaned = cleanupOutputLines(split)
+        return cleaned.isEmpty ? nil : cleaned
+    }
+
     /// Capture the terminal output that appeared *after* a slash command was sent.
     /// Snapshots the pane before, sends the command, waits for output to settle,
     /// then diffs the two snapshots and returns only the new lines.

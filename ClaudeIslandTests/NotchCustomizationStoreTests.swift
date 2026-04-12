@@ -41,13 +41,13 @@ final class NotchCustomizationStoreTests: XCTestCase {
     func test_init_withExistingV1Key_loadsIt() throws {
         var persisted = NotchCustomization.default
         persisted.theme = .cyber
-        persisted.maxWidth = 520
+        persisted.defaultGeometry.maxWidth = 520
         let data = try JSONEncoder().encode(persisted)
         UserDefaults.standard.set(data, forKey: v1Key)
 
         let store = NotchCustomizationStore()
         XCTAssertEqual(store.customization.theme, .cyber)
-        XCTAssertEqual(store.customization.maxWidth, 520)
+        XCTAssertEqual(store.customization.defaultGeometry.maxWidth, 520)
     }
 
     // MARK: - Migration
@@ -87,6 +87,17 @@ final class NotchCustomizationStoreTests: XCTestCase {
         XCTAssertEqual(decoded.theme, .paper)
     }
 
+    func test_updateGeometry_mutatesAndPersists() throws {
+        let store = NotchCustomizationStore()
+        store.updateGeometry(for: "42") { $0.notchHeight = 55 }
+
+        XCTAssertEqual(store.customization.geometry(for: "42").notchHeight, 55)
+
+        let data = try XCTUnwrap(UserDefaults.standard.data(forKey: v1Key))
+        let decoded = try JSONDecoder().decode(NotchCustomization.self, from: data)
+        XCTAssertEqual(decoded.geometry(for: "42").notchHeight, 55)
+    }
+
     // MARK: - Edit lifecycle
 
     func test_enterEditMode_setsIsEditing() {
@@ -98,22 +109,22 @@ final class NotchCustomizationStoreTests: XCTestCase {
 
     func test_cancelEdit_rollsBackToSnapshot() {
         let store = NotchCustomizationStore()
-        store.update { $0.maxWidth = 400 }
+        store.update { $0.defaultGeometry.maxWidth = 400 }
         store.enterEditMode()
-        store.update { $0.maxWidth = 600 }
-        XCTAssertEqual(store.customization.maxWidth, 600)
+        store.update { $0.defaultGeometry.maxWidth = 600 }
+        XCTAssertEqual(store.customization.defaultGeometry.maxWidth, 600)
         store.cancelEdit()
-        XCTAssertEqual(store.customization.maxWidth, 400)
+        XCTAssertEqual(store.customization.defaultGeometry.maxWidth, 400)
         XCTAssertFalse(store.isEditing)
     }
 
     func test_commitEdit_keepsChanges() {
         let store = NotchCustomizationStore()
-        store.update { $0.maxWidth = 400 }
+        store.update { $0.defaultGeometry.maxWidth = 400 }
         store.enterEditMode()
-        store.update { $0.maxWidth = 600 }
+        store.update { $0.defaultGeometry.maxWidth = 600 }
         store.commitEdit()
-        XCTAssertEqual(store.customization.maxWidth, 600)
+        XCTAssertEqual(store.customization.defaultGeometry.maxWidth, 600)
         XCTAssertFalse(store.isEditing)
     }
 

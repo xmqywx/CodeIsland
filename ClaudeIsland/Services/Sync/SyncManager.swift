@@ -190,6 +190,22 @@ final class SyncManager: ObservableObject {
         // Parse the message content — it may be plain text OR a JSON envelope with images.
         let (parsedText, imageBlobIds) = parseMessagePayload(text)
 
+        // Read-screen path: phone explicitly sends `{type:"read-screen"}` to snapshot
+        // the current cmux tab's buffer. Fire-and-forget — we ship the captured text
+        // back as a synthetic terminal_output message, same pipeline as slash commands.
+        if isReadScreenRequest(text) {
+            if let uuid = targetUuid {
+                let snapshot = await TerminalWriter.shared.readScreen(claudeUuid: uuid, cwd: cwd, livePid: livePid)
+                if let snapshot, !snapshot.isEmpty {
+                    await sendTerminalOutputMessage(sessionId: serverSessionId, command: "read-screen", output: snapshot)
+                }
+                Self.logger.info("Phone read-screen (uuid=\(uuid.prefix(8), privacy: .public) pid=\(livePid?.description ?? "nil", privacy: .public)) → captured=\(snapshot != nil)")
+            } else {
+                Self.logger.warning("read-screen dropped: no target uuid")
+            }
+            return
+        }
+
         // Control-key path: phone explicitly sends `{type:"key", key:"escape"}` etc.
         // These don't go through stdin — we fire them directly at the cmux surface.
         if let controlKey = parseControlKey(text) {
@@ -340,6 +356,14 @@ final class SyncManager: ObservableObject {
               let json = String(data: data, encoding: .utf8) else { return }
         let localId = "term-\(UUID().uuidString)"
         connection.sendMessage(sessionId: sessionId, content: json, localId: localId)
+    }
+
+    /// True if the message is a `{type:"read-screen"}` envelope from the phone.
+    private func isReadScreenRequest(_ content: String) -> Bool {
+        guard let data = content.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return false }
+        return (dict["type"] as? String) == "read-screen"
     }
 
     /// Extract a control key name from a message payload of shape `{type:"key", key:"escape"}`.

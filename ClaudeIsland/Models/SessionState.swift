@@ -61,6 +61,8 @@ struct SessionState: Equatable, Identifiable, Sendable {
 
     var lastActivity: Date
     var createdAt: Date
+    /// When the session was marked as ended (for auto-cleanup after timeout)
+    var endedAt: Date?
 
     // MARK: - Identifiable
 

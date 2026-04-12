@@ -12,6 +12,7 @@ import SwiftUI
 class NotchWindowController: NSWindowController {
     let viewModel: NotchViewModel
     private let screen: NSScreen
+    let screenID: String
     private var cancellables = Set<AnyCancellable>()
 
     /// Subscription to NotchCustomizationStore.$customization. Held
@@ -27,6 +28,7 @@ class NotchWindowController: NSWindowController {
 
     init(screen: NSScreen) {
         self.screen = screen
+        self.screenID = screen.persistentID
 
         let screenFrame = screen.frame
         let notchSize = screen.notchSize
@@ -53,7 +55,8 @@ class NotchWindowController: NSWindowController {
             deviceNotchRect: deviceNotchRect,
             screenRect: screenFrame,
             windowHeight: windowHeight,
-            hasPhysicalNotch: screen.hasPhysicalNotch
+            hasPhysicalNotch: screen.hasPhysicalNotch,
+            screenID: screen.persistentID
         )
 
         // Create the window
@@ -83,6 +86,8 @@ class NotchWindowController: NSWindowController {
                     // Accept mouse events when opened so buttons work
                     notchWindow?.ignoresMouseEvents = false
                     notchWindow?.acceptsMouseMovedEvents = true
+                    // Elevate above menu bar icons so clicks land on the notch
+                    notchWindow?.level = .popUpMenu
                     // Only steal focus on user-initiated opens (click)
                     // Hover/notification opens should not interrupt typing in other apps
                     if viewModel?.shouldActivateOnOpen == true {
@@ -94,6 +99,9 @@ class NotchWindowController: NSWindowController {
                 case .closed, .popping:
                     // Ignore mouse events when closed so clicks pass through
                     notchWindow?.ignoresMouseEvents = true
+                    // Lower back to normal level so transparent areas
+                    // don't block clicks on menu bar icons
+                    notchWindow?.level = .mainMenu + 3
                 }
             }
             .store(in: &cancellables)
@@ -158,6 +166,7 @@ class NotchWindowController: NSWindowController {
         // (which can return a non-notched secondary display once the
         // live edit panel becomes key on a multi-monitor setup).
         let overlay = NotchLiveEditOverlay(
+            screenID: screenID,
             screenProvider: { activeScreen },
             onExit: { [weak self] in
                 self?.exitLiveEditMode()
@@ -189,7 +198,7 @@ class NotchWindowController: NSWindowController {
     @MainActor
     func applyGeometryFromStore() {
         let store = NotchCustomizationStore.shared
-        let customization = store.customization
+        let geo = store.customization.geometry(for: screenID)
         let window = self.window
 
         guard let window else { return }
@@ -197,37 +206,22 @@ class NotchWindowController: NSWindowController {
         let screenFrame = activeScreen.frame
 
         let runtimeWidth = NotchHardwareDetector.clampedWidth(
-            measuredContentWidth: customization.maxWidth,
-            maxWidth: customization.maxWidth
+            measuredContentWidth: geo.maxWidth,
+            maxWidth: geo.maxWidth
         )
         let clampedOffset = NotchHardwareDetector.clampedHorizontalOffset(
-            storedOffset: customization.horizontalOffset,
+            storedOffset: geo.horizontalOffset,
             runtimeWidth: runtimeWidth,
             screenWidth: screenFrame.width
         )
         let baseX = (screenFrame.width - runtimeWidth) / 2
         let finalX = screenFrame.origin.x + baseX + clampedOffset
 
-        // The notch panel currently sizes itself to the full
-        // screen width and positions content via inner layout, so
-        // a geometry change here re-flows the internal notch
-        // layout rather than resizing the window. This matches the
-        // existing CodeIsland rendering model and avoids a deeper
-        // refactor of the hosting view geometry. Stored horizontal
-        // offset and width are still observed via the subscription
-        // so NotchView can react directly to store changes.
-        _ = (finalX, runtimeWidth) // Referenced for clarity; full
-                                   // geometry wiring is deferred to
-                                   // the next chunk (live edit mode)
-                                   // where the interactive drag
-                                   // path needs the same math.
+        _ = (finalX, runtimeWidth)
 
-        // Smoothly animate any future frame changes.
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.35
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            // Preserve the current full-width overlay frame; only
-            // the inner notch bounds care about runtimeWidth.
             window.animator().setFrame(window.frame, display: true)
         }
     }

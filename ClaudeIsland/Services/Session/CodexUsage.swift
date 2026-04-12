@@ -6,6 +6,7 @@
 //  Scans ~/.codex/sessions/rollout-*.jsonl for the most recent token_count event.
 //
 
+import Combine
 import Foundation
 
 struct CodexUsageWindow: Equatable, Codable, Sendable, Identifiable {
@@ -33,8 +34,48 @@ struct CodexUsageSnapshot: Equatable, Codable, Sendable {
     var isEmpty: Bool { windows.isEmpty }
 }
 
+// MARK: - Usage Monitor
+
+/// Periodically loads the latest Codex usage snapshot and publishes it for UI consumption.
+/// Mirrors the interface of RateLimitMonitor.
+@MainActor
+class CodexUsageMonitor: ObservableObject {
+    static let shared = CodexUsageMonitor()
+
+    @Published private(set) var snapshot: CodexUsageSnapshot?
+    @Published private(set) var isLoading = false
+
+    private var refreshTimer: Timer?
+
+    private init() {}
+
+    func start() {
+        guard refreshTimer == nil else { return }
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+            Task { @MainActor in await self?.refresh() }
+        }
+        Task { await refresh() }
+    }
+
+    func stop() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        snapshot = nil
+    }
+
+    func refresh() async {
+        guard !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
+        snapshot = try? CodexUsageLoader.load()
+    }
+}
+
+// MARK: - Usage Loader
+
 enum CodexUsageLoader {
-    static let defaultRootURL = CodexRolloutDiscovery.defaultRootURL
+    static let defaultRootURL: URL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".codex/sessions", isDirectory: true)
 
     private struct Candidate {
         var fileURL: URL

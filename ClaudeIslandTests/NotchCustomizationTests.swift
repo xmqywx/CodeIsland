@@ -27,8 +27,8 @@ final class NotchCustomizationTests: XCTestCase {
         XCTAssertEqual(c.fontScale, .default)
         XCTAssertTrue(c.showBuddy)
         XCTAssertTrue(c.showUsageBar)
-        XCTAssertEqual(c.maxWidth, 440)
-        XCTAssertEqual(c.horizontalOffset, 0)
+        XCTAssertEqual(c.defaultGeometry.maxWidth, 440)
+        XCTAssertEqual(c.defaultGeometry.horizontalOffset, 0)
         XCTAssertEqual(c.hardwareNotchMode, .auto)
     }
 
@@ -40,8 +40,8 @@ final class NotchCustomizationTests: XCTestCase {
         original.fontScale = .large
         original.showBuddy = false
         original.showUsageBar = false
-        original.maxWidth = 520
-        original.horizontalOffset = -42
+        original.defaultGeometry.maxWidth = 520
+        original.defaultGeometry.horizontalOffset = -42
         original.hardwareNotchMode = .forceVirtual
 
         let data = try JSONEncoder().encode(original)
@@ -63,8 +63,8 @@ final class NotchCustomizationTests: XCTestCase {
         XCTAssertEqual(decoded.fontScale, .default)
         XCTAssertTrue(decoded.showBuddy)
         XCTAssertTrue(decoded.showUsageBar)
-        XCTAssertEqual(decoded.maxWidth, 440)
-        XCTAssertEqual(decoded.horizontalOffset, 0)
+        XCTAssertEqual(decoded.defaultGeometry.maxWidth, 440)
+        XCTAssertEqual(decoded.defaultGeometry.horizontalOffset, 0)
         XCTAssertEqual(decoded.hardwareNotchMode, .auto)
     }
 
@@ -118,5 +118,60 @@ final class NotchCustomizationTests: XCTestCase {
         )
         XCTAssertEqual(auto, .auto)
         XCTAssertEqual(virt, .forceVirtual)
+    }
+
+    // MARK: - ScreenGeometry
+
+    func test_screenGeometry_defaultValues() {
+        let geo = ScreenGeometry.default
+        XCTAssertEqual(geo.maxWidth, 440)
+        XCTAssertEqual(geo.horizontalOffset, 0)
+        XCTAssertEqual(geo.notchHeight, 38)
+    }
+
+    func test_screenGeometry_codableRoundtrip() throws {
+        var geo = ScreenGeometry.default
+        geo.maxWidth = 520
+        geo.horizontalOffset = -42
+        geo.notchHeight = 50
+        let data = try JSONEncoder().encode(geo)
+        let decoded = try JSONDecoder().decode(ScreenGeometry.self, from: data)
+        XCTAssertEqual(decoded, geo)
+    }
+
+    // MARK: - Per-screen geometry
+
+    func test_geometry_forUnknownScreen_returnsDefault() {
+        let c = NotchCustomization.default
+        let geo = c.geometry(for: "999")
+        XCTAssertEqual(geo, ScreenGeometry.default)
+    }
+
+    func test_updateGeometry_storesPerScreen() {
+        var c = NotchCustomization.default
+        c.updateGeometry(for: "42") { $0.notchHeight = 60 }
+        XCTAssertEqual(c.geometry(for: "42").notchHeight, 60)
+        XCTAssertEqual(c.geometry(for: "99").notchHeight, 38)
+    }
+
+    func test_codable_legacyMigration_topLevelFieldsToDefaultGeometry() throws {
+        let legacy = """
+        {"theme":"classic","fontScale":"default","showBuddy":true,"showUsageBar":true,
+         "maxWidth":520,"horizontalOffset":-30,"hardwareNotchMode":"auto"}
+        """
+        let decoded = try JSONDecoder().decode(NotchCustomization.self, from: Data(legacy.utf8))
+        XCTAssertEqual(decoded.defaultGeometry.maxWidth, 520)
+        XCTAssertEqual(decoded.defaultGeometry.horizontalOffset, -30)
+        XCTAssertEqual(decoded.defaultGeometry.notchHeight, 38)
+        XCTAssertTrue(decoded.screenGeometries.isEmpty)
+    }
+
+    func test_codable_newFormat_roundtrip() throws {
+        var original = NotchCustomization.default
+        original.updateGeometry(for: "42") { $0.maxWidth = 600; $0.notchHeight = 50 }
+        original.updateGeometry(for: "99") { $0.horizontalOffset = 20 }
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(NotchCustomization.self, from: data)
+        XCTAssertEqual(decoded, original)
     }
 }

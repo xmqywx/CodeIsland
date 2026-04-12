@@ -98,6 +98,19 @@ def send_event(state):
         return None
 
 
+def _is_parent_codex():
+    """Check if the parent process is the Codex CLI (not Claude Code)."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(os.getppid()), "-o", "comm="],
+            capture_output=True, text=True, timeout=2
+        )
+        return "codex" in result.stdout.strip().lower()
+    except Exception:
+        return False
+
+
 def main():
     try:
         data = json.load(sys.stdin)
@@ -114,9 +127,10 @@ def main():
         sys.exit(0)
     tool_input = data.get("tool_input", {})
 
-    # Detect Codex events: Codex always includes "model" as a required non-optional field.
-    # Claude Code never sends "model" in its hook payload.
-    is_codex = "model" in data
+    # Detect Codex by checking the parent process name.
+    # Both Claude Code and Codex now send "model" and "permission_mode",
+    # so payload fields are unreliable. The parent process is the CLI binary itself.
+    is_codex = _is_parent_codex()
 
     # Get process info
     claude_pid = os.getppid()

@@ -45,6 +45,19 @@ enum NotchHardwareDetector {
     /// tiny indicator" at default font scale.
     static let minIdleWidth: CGFloat = 140
 
+    // MARK: - Notch height clamp
+
+    /// Minimum custom notch height — ensures the notch is always visible.
+    static let minNotchHeight: CGFloat = 20
+
+    /// Maximum custom notch height — prevents excessive screen coverage.
+    static let maxNotchHeight: CGFloat = 80
+
+    /// Clamp a user-provided notch height to the valid range. Pure function.
+    static func clampedHeight(_ height: CGFloat) -> CGFloat {
+        max(minNotchHeight, min(height, maxNotchHeight))
+    }
+
     /// Clamp the measured content width against the user's
     /// `maxWidth` and the hard `minIdleWidth` floor. Pure function;
     /// no global state.

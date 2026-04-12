@@ -53,6 +53,7 @@ struct ClaudeInstancesView: View {
                         flatList
                     }
                 }
+                .padding(.bottom, 50)
 
                 // Bottom right: buddy + usage stats
                 // Hidden when buddy card open or when expanded with many sessions
@@ -82,7 +83,21 @@ struct ClaudeInstancesView: View {
                         }
                     }
                     .padding(.trailing, 4)
+                    .padding(.bottom, 12)
                     .padding(.bottom, 2)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                }
+
+                // Bottom left: Codex usage stats
+                if codexGate.isEnabled && !showBuddyCard && !(sortedInstances.count > 4 && viewModel.isInstancesExpanded)
+                    && notchStore.customization.showUsageBar {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Spacer()
+                        CodexUsageStatsBar(monitor: codexUsageMonitor)
+                    }
+                    .padding(.leading, 4)
+                    .padding(.bottom, 14)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
             }
@@ -248,6 +263,10 @@ struct ClaudeInstancesView: View {
                 if notchStore.customization.showUsageBar {
                     UsageStatsBar(monitor: rateLimitMonitor, totalMinutes: 0)
                         .padding(.top, 4)
+                    if codexGate.isEnabled {
+                        CodexUsageStatsBar(monitor: codexUsageMonitor)
+                            .padding(.top, 4)
+                    }
                 }
             }
 
@@ -283,6 +302,8 @@ struct ClaudeInstancesView: View {
     }
 
     @StateObject private var rateLimitMonitor = RateLimitMonitor.shared
+    @StateObject private var codexUsageMonitor = CodexUsageMonitor.shared
+    @ObservedObject private var codexGate = CodexFeatureGate.shared
 
     // MARK: - Instances List
 
@@ -1458,5 +1479,130 @@ struct UsageStatsBar: View {
             timeStr = "\(Int(remaining / 86400))天"
         }
         return "\(window)窗口: \(pct)% (\(timeStr)后重置)"
+    }
+}
+
+// MARK: - Codex Usage Stats Bar
+
+struct CodexUsageStatsBar: View {
+    @ObservedObject var monitor: CodexUsageMonitor
+
+    @AppStorage("usageWarningThreshold") private var usageWarningThreshold: Int = 90
+    @State private var appear = false
+    @State private var pulsePhase = false
+
+    private func barColor(_ pct: Int) -> Color {
+        let threshold = usageWarningThreshold
+        if threshold > 0 && pct >= threshold { return Color(red: 0.94, green: 0.27, blue: 0.27) }
+        if threshold > 0 && pct >= max(threshold - 20, 50) { return Color(red: 1.0, green: 0.6, blue: 0.2) }
+        return Color(red: 0.29, green: 0.87, blue: 0.5)
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let snapshot = monitor.snapshot, !snapshot.isEmpty {
+                Text("Codex")
+                    .notchFont(7, weight: .bold)
+                    .notchSecondaryForeground()
+                    .opacity(0.5)
+
+                Rectangle()
+                    .fill(.white.opacity(0.08))
+                    .frame(width: 1, height: 14)
+
+                ForEach(snapshot.windows) { window in
+                    usageGauge(
+                        pct: window.roundedUsedPercentage,
+                        label: window.label,
+                        resetAt: window.resetsAt
+                    )
+                }
+
+                Image(systemName: "arrow.clockwise")
+                    .notchFont(7)
+                    .opacity(monitor.isLoading ? 0.5 : 0.2)
+                    .rotationEffect(.degrees(monitor.isLoading ? 360 : 0))
+                    .animation(
+                        monitor.isLoading
+                            ? .linear(duration: 1).repeatForever(autoreverses: false)
+                            : .default,
+                        value: monitor.isLoading
+                    )
+                    .contentShape(Rectangle().size(width: 16, height: 16))
+                    .onTapGesture { Task { await monitor.refresh() } }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.white.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(.white.opacity(0.06), lineWidth: 0.5)
+                )
+        )
+        .opacity(appear ? 1 : 0)
+        .offset(y: appear ? 0 : 5)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                pulsePhase = true
+            }
+            withAnimation(.easeOut(duration: 0.4).delay(0.3)) {
+                appear = true
+            }
+        }
+    }
+
+    private func shouldBlink(_ pct: Int) -> Bool {
+        usageWarningThreshold > 0 && pct >= usageWarningThreshold
+    }
+
+    @ViewBuilder
+    private func usageGauge(pct: Int, label: String, resetAt: Date?) -> some View {
+        let color = barColor(pct)
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 3) {
+                Text(label)
+                    .notchFont(7, weight: .bold)
+                    .notchSecondaryForeground()
+                Text("\(pct)%")
+                    .notchFont(9, weight: .semibold, design: .monospaced)
+                    .foregroundColor(color)
+                    .opacity(shouldBlink(pct) ? (pulsePhase ? 1.0 : 0.3) : 1.0)
+                if let resetAt, resetAt.timeIntervalSinceNow > 0 {
+                    Text(formatResetShort(resetAt.timeIntervalSinceNow))
+                        .notchFont(7)
+                        .opacity(0.2)
+                }
+            }
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(.white.opacity(0.06))
+                    .frame(width: 50, height: 3)
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(color)
+                    .frame(width: max(2, 50 * CGFloat(pct) / 100), height: 3)
+                    .shadow(color: color.opacity(0.4), radius: 2)
+            }
+        }
+        .help(usageTooltip(pct: pct, label: label, resetAt: resetAt))
+    }
+
+    private func formatResetShort(_ seconds: TimeInterval) -> String {
+        if seconds < 3600 { return "\(Int(seconds / 60))m" }
+        if seconds < 86400 {
+            let h = Int(seconds / 3600)
+            let m = Int(seconds.truncatingRemainder(dividingBy: 3600) / 60)
+            return m > 0 ? "\(h)h\(m)m" : "\(h)h"
+        }
+        return "\(Int(seconds / 86400))d"
+    }
+
+    private func usageTooltip(pct: Int, label: String, resetAt: Date?) -> String {
+        guard let resetAt else { return "Codex \(label): \(pct)%" }
+        let remaining = resetAt.timeIntervalSinceNow
+        if remaining <= 0 { return "Codex \(label): \(pct)% (reset)" }
+        return "Codex \(label): \(pct)% (resets in \(formatResetShort(remaining)))"
     }
 }

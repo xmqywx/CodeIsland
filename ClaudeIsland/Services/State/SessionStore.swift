@@ -182,6 +182,7 @@ actor SessionStore {
 
         if event.status == "ended" {
             session.phase = .ended
+            session.endedAt = Date()
             sessions[sessionId] = session
             cancelPendingSync(sessionId: sessionId)
             publishState()
@@ -958,24 +959,38 @@ actor SessionStore {
         zombieScanTask = nil
     }
 
-    /// Check all non-ended sessions for dead processes
+    /// Check all non-ended sessions for dead processes, and auto-clean stale ended sessions
     func scanForZombies() {
         var changed = false
         var zombieSessionIds: [String] = []
+
+        // 1. Detect zombie sessions (dead processes)
         for (sessionId, session) in sessions {
             guard session.phase != .ended else { continue }
             guard let pid = session.pid else { continue }
             if !livenessChecker.isAlive(pid: pid) {
                 Self.logger.info("Zombie detected: session \(sessionId.prefix(8), privacy: .public) PID \(pid) is dead")
                 sessions[sessionId]?.phase = .ended
+                sessions[sessionId]?.endedAt = Date()
                 cancelPendingSync(sessionId: sessionId)
                 zombieSessionIds.append(sessionId)
                 changed = true
             }
         }
+
+        // 2. Auto-clean ended sessions older than 1 hour
+        let staleThreshold = Date().addingTimeInterval(-3600) // 1 hour
+        let staleIds = sessions.filter { _, session in
+            session.phase == .ended && (session.endedAt ?? session.lastActivity) < staleThreshold
+        }.map(\.key)
+        for id in staleIds {
+            Self.logger.info("Auto-cleaning stale ended session: \(id.prefix(8), privacy: .public)")
+            sessions.removeValue(forKey: id)
+            cancelPendingSync(sessionId: id)
+            changed = true
+        }
+
         if changed {
-            // Clean up HookSocketServer pending permissions and interrupt watchers
-            // (mirrors the cleanup that normal Stop/ended hook events perform)
             for sessionId in zombieSessionIds {
                 Task { @MainActor in
                     HookSocketServer.shared.cancelPendingPermissions(sessionId: sessionId)
@@ -1012,7 +1027,7 @@ actor SessionStore {
     private func loadHistoryFromFile(sessionId: String, cwd: String) async {
         // Codex sessions: parse rollout JSONL instead of Claude JSONL
         if let transcriptPath = sessions[sessionId]?.codexTranscriptPath, !transcriptPath.isEmpty {
-            let messages = CodexChatHistoryParser.parse(transcriptPath: transcriptPath)
+            let messages = await CodexChatHistoryParser.shared.parse(transcriptPath: transcriptPath)
             let firstUserMsg = messages.first(where: { $0.role == .user })
             let lastUserMsg = messages.last(where: { $0.role == .user })
             let conversationInfo = ConversationInfo(
@@ -1154,7 +1169,7 @@ actor SessionStore {
             try? await Task.sleep(nanoseconds: syncDebounceNs)
             guard !Task.isCancelled else { return }
 
-            let messages = CodexChatHistoryParser.parse(transcriptPath: transcriptPath)
+            let messages = await CodexChatHistoryParser.shared.parse(transcriptPath: transcriptPath)
             guard !messages.isEmpty else { return }
 
             let firstUserMsg = messages.first(where: { $0.role == .user })

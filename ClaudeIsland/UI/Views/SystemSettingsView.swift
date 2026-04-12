@@ -47,6 +47,7 @@ struct SystemSettingsRow: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(isHovered ? Color.white.opacity(0.08) : Color.clear)
@@ -384,6 +385,7 @@ private struct TabToggle: View {
 private struct GeneralTab: View {
     @State private var hooksInstalled = HookInstaller.isInstalled()
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @ObservedObject private var codexGate = CodexFeatureGate.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -408,6 +410,9 @@ private struct GeneralTab: View {
                             HookInstaller.installIfNeeded()
                             hooksInstalled = true
                         }
+                    }
+                    TabToggle(icon: "terminal.fill", label: L10n.codexSupport, isOn: codexGate.isEnabled) {
+                        codexGate.isEnabled.toggle()
                     }
                 }
             }

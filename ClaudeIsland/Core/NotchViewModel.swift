@@ -65,6 +65,7 @@ class NotchViewModel: ObservableObject {
     let geometry: NotchGeometry
     let spacing: CGFloat = 12
     let hasPhysicalNotch: Bool
+    let screenID: String
 
     /// Current expansion width from NotchView (synced for hit testing)
     @Published var currentExpansionWidth: CGFloat = 240
@@ -164,7 +165,8 @@ class NotchViewModel: ObservableObject {
 
     // MARK: - Initialization
 
-    init(deviceNotchRect: CGRect, screenRect: CGRect, windowHeight: CGFloat, hasPhysicalNotch: Bool) {
+    init(deviceNotchRect: CGRect, screenRect: CGRect, windowHeight: CGFloat, hasPhysicalNotch: Bool, screenID: String) {
+        self.screenID = screenID
         self.geometry = NotchGeometry(
             deviceNotchRect: deviceNotchRect,
             screenRect: screenRect,
@@ -227,10 +229,10 @@ class NotchViewModel: ObservableObject {
     /// when the smaller built-in is the active one. Mirrors the same
     /// clamp NotchView applies for `.offset(x:)` rendering.
     private var currentHorizontalOffset: CGFloat {
-        let stored = NotchCustomizationStore.shared.customization.horizontalOffset
+        let geo = NotchCustomizationStore.shared.customization.geometry(for: screenID)
         let runtime: CGFloat = status == .opened ? openedSize.width : (geometry.deviceNotchRect.width + currentExpansionWidth)
         return NotchHardwareDetector.clampedHorizontalOffset(
-            storedOffset: stored,
+            storedOffset: geo.horizontalOffset,
             runtimeWidth: runtime,
             screenWidth: geometry.screenRect.width
         )
@@ -271,14 +273,20 @@ class NotchViewModel: ObservableObject {
         hoverTimer?.cancel()
         hoverTimer = nil
 
-        // Start hover timer to auto-expand after 1 second
+        // Start hover timer to auto-expand after configured delay
         if isHovering && (status == .closed || status == .popping) {
-            let workItem = DispatchWorkItem { [weak self] in
-                guard let self = self, self.isHovering else { return }
-                self.notchOpen(reason: .hover)
+            let delay = NotchCustomizationStore.shared.customization.hoverSpeed.delay
+            if delay <= 0 {
+                // Instant: expand immediately
+                notchOpen(reason: .hover)
+            } else {
+                let workItem = DispatchWorkItem { [weak self] in
+                    guard let self = self, self.isHovering else { return }
+                    self.notchOpen(reason: .hover)
+                }
+                hoverTimer = workItem
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
             }
-            hoverTimer = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: workItem)
         }
     }
 

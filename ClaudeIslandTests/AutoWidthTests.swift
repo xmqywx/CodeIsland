@@ -91,6 +91,20 @@ final class AutoWidthTests: XCTestCase {
         XCTAssertEqual(clamped, 500)
     }
 
+    // MARK: - clampedHeight
+
+    func test_clampedHeight_withinRange_passesThrough() {
+        XCTAssertEqual(NotchHardwareDetector.clampedHeight(50), 50)
+    }
+
+    func test_clampedHeight_belowMin_returnsMin() {
+        XCTAssertEqual(NotchHardwareDetector.clampedHeight(5), NotchHardwareDetector.minNotchHeight)
+    }
+
+    func test_clampedHeight_aboveMax_returnsMax() {
+        XCTAssertEqual(NotchHardwareDetector.clampedHeight(200), NotchHardwareDetector.maxNotchHeight)
+    }
+
     // MARK: - hasHardwareNotch mode override
 
     func test_hasHardwareNotch_forceVirtual_alwaysFalse() {

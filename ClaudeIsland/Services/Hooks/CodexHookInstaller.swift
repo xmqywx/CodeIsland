@@ -2,8 +2,8 @@
 //  CodexHookInstaller.swift
 //  ClaudeIsland
 //
-//  Low-level logic for installing/uninstalling Code Island hooks
-//  into Codex's hooks.json and config.toml.
+//  Installs/uninstalls Code Island hooks into Codex's hooks.json and config.toml.
+//  Mirrors HookInstaller's interface: installIfNeeded(), isInstalled(), uninstall().
 //
 
 import Foundation
@@ -56,6 +56,112 @@ enum CodexHookInstaller {
         ("UserPromptSubmit", nil),
         ("Stop", nil),
     ]
+
+    // MARK: - Top-Level Lifecycle (mirrors HookInstaller)
+
+    /// Install Codex hooks on app launch.
+    static func installIfNeeded() {
+        let codexDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex")
+        try? FileManager.default.createDirectory(at: codexDir, withIntermediateDirectories: true)
+
+        let scriptPath = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude/hooks/codeisland-state.py").path
+        let command = hookCommand(for: scriptPath)
+
+        let configURL = codexDir.appendingPathComponent("config.toml")
+        let hooksURL = codexDir.appendingPathComponent("hooks.json")
+        let manifestURL = codexDir.appendingPathComponent(CodexHookInstallerManifest.fileName)
+        let legacyManifestURL = codexDir.appendingPathComponent(CodexHookInstallerManifest.legacyFileName)
+
+        let existingConfig = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
+        let existingHooks = try? Data(contentsOf: hooksURL)
+
+        let featureMutation = enableCodexHooksFeature(in: existingConfig)
+        guard let hooksMutation = try? installHooksJSON(existingData: existingHooks, hookCommand: command) else { return }
+
+        if featureMutation.changed {
+            try? featureMutation.contents.write(to: configURL, atomically: true, encoding: .utf8)
+        }
+        if let hooksData = hooksMutation.contents {
+            try? hooksData.write(to: hooksURL, options: .atomic)
+        }
+
+        let manifest = CodexHookInstallerManifest(
+            hookCommand: command,
+            enabledCodexHooksFeature: featureMutation.featureEnabledByInstaller
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try? encoder.encode(manifest).write(to: manifestURL, options: .atomic)
+
+        if FileManager.default.fileExists(atPath: legacyManifestURL.path) {
+            try? FileManager.default.removeItem(at: legacyManifestURL)
+        }
+    }
+
+    /// Check if Codex hooks are currently installed.
+    static func isInstalled() -> Bool {
+        let hooksURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex/hooks.json")
+        guard let data = try? Data(contentsOf: hooksURL),
+              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let hooksObj = json["hooks"] as? [String: Any] else { return false }
+
+        for (_, value) in hooksObj {
+            guard let groups = value as? [[String: Any]] else { continue }
+            for group in groups {
+                if let hooks = group["hooks"] as? [[String: Any]] {
+                    for hook in hooks {
+                        if let cmd = hook["command"] as? String, cmd.contains("codeisland-state.py") {
+                            return true
+                        }
+                    }
+                }
+            }
+        }
+        return false
+    }
+
+    /// Uninstall Codex hooks and optionally revert the feature flag.
+    static func uninstall() {
+        let codexDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex")
+        let configURL = codexDir.appendingPathComponent("config.toml")
+        let hooksURL = codexDir.appendingPathComponent("hooks.json")
+        let primaryManifestURL = codexDir.appendingPathComponent(CodexHookInstallerManifest.fileName)
+        let legacyManifestURL = codexDir.appendingPathComponent(CodexHookInstallerManifest.legacyFileName)
+        let manifestURL = resolvedManifestURL(in: codexDir)
+
+        let manifest = loadManifest(at: manifestURL)
+        let existingHooks = try? Data(contentsOf: hooksURL)
+        guard let hooksMutation = try? uninstallHooksJSON(
+            existingData: existingHooks,
+            managedCommand: manifest?.hookCommand
+        ) else { return }
+
+        if let hooksData = hooksMutation.contents {
+            try? hooksData.write(to: hooksURL, options: .atomic)
+        } else {
+            try? FileManager.default.removeItem(at: hooksURL)
+        }
+
+        if let manifest, manifest.enabledCodexHooksFeature, !hooksMutation.hasRemainingHooks {
+            let existingConfig = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
+            let featureMutation = disableCodexHooksFeatureIfManaged(in: existingConfig)
+            if featureMutation.changed {
+                try? featureMutation.contents.write(to: configURL, atomically: true, encoding: .utf8)
+            }
+        }
+
+        for candidate in [primaryManifestURL, legacyManifestURL]
+            where FileManager.default.fileExists(atPath: candidate.path) {
+            try? FileManager.default.removeItem(at: candidate)
+        }
+    }
+
+    // MARK: - Pure Logic (used by HookHealthCheck and internally)
 
     static func hookCommand(for scriptPath: String) -> String {
         shellQuote(scriptPath)
@@ -181,6 +287,21 @@ enum CodexHookInstaller {
     }
 
     // MARK: - Private Helpers
+
+    private static func loadManifest(at url: URL) -> CodexHookInstallerManifest? {
+        guard FileManager.default.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(CodexHookInstallerManifest.self, from: data)
+    }
+
+    private static func resolvedManifestURL(in directory: URL) -> URL {
+        let primaryURL = directory.appendingPathComponent(CodexHookInstallerManifest.fileName)
+        if FileManager.default.fileExists(atPath: primaryURL.path) { return primaryURL }
+        let legacyURL = directory.appendingPathComponent(CodexHookInstallerManifest.legacyFileName)
+        return FileManager.default.fileExists(atPath: legacyURL.path) ? legacyURL : primaryURL
+    }
 
     private static func loadRootObject(from data: Data?) throws -> [String: Any] {
         guard let data else { return [:] }

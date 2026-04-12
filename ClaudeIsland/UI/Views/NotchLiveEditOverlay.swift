@@ -12,7 +12,7 @@
 //    the active screen. So panel x=0 corresponds to the screen's
 //    left edge and the screen's mid X is panel.size.width/2.
 //  - The visible notch is rendered by NotchView at screen-mid plus
-//    `customization.horizontalOffset`. We mirror that math here so
+//    the per-screen `ScreenGeometry.horizontalOffset`. We mirror that math here so
 //    the dashed border, drag-catcher, and arrow buttons all align
 //    pixel-for-pixel with the real notch.
 //
@@ -29,6 +29,7 @@ enum NotchEditSubMode {
 }
 
 struct NotchLiveEditOverlay: View {
+    let screenID: String
     @ObservedObject private var store: NotchCustomizationStore = .shared
     @State private var subMode: NotchEditSubMode = .resize
     @State private var presetMarkerVisible: Bool = false
@@ -61,7 +62,13 @@ struct NotchLiveEditOverlay: View {
     /// edit-mode visuals (dashed border + drag-catcher) we anchor
     /// to the closed-state height so the interactive region matches
     /// the resting visual.
-    private let visibleNotchHeight: CGFloat = 38
+    private var visibleNotchHeight: CGFloat {
+        if hasHardwareNotch {
+            return 38
+        }
+        let geo = store.customization.geometry(for: screenID)
+        return NotchHardwareDetector.clampedHeight(geo.notchHeight)
+    }
 
     /// Hardware notch width on the active screen, honoring the
     /// `hardwareNotchMode` override. Falls back to 200pt for the
@@ -77,7 +84,8 @@ struct NotchLiveEditOverlay: View {
 
     /// User-controlled wing expansion derived from `maxWidth`.
     private var userExpansion: CGFloat {
-        max(0, store.customization.maxWidth - baseNotchWidth)
+        let geo = store.customization.geometry(for: screenID)
+        return max(0, geo.maxWidth - baseNotchWidth)
     }
 
     /// Total visible notch width (hardware width + wings).
@@ -98,10 +106,12 @@ struct NotchLiveEditOverlay: View {
     /// user can tell when they've dragged off-center. Both rounded
     /// to whole points for legibility.
     private var readoutText: String {
-        let width = Int(store.customization.maxWidth.rounded())
-        let offset = Int(store.customization.horizontalOffset.rounded())
+        let geo = store.customization.geometry(for: screenID)
+        let width = Int(geo.maxWidth.rounded())
+        let height = Int(visibleNotchHeight.rounded())
+        let offset = Int(geo.horizontalOffset.rounded())
         let offsetSign = offset > 0 ? "+\(offset)" : "\(offset)"
-        return "W \(width)pt   X \(offsetSign)pt"
+        return "W \(width)pt   H \(height)pt   X \(offsetSign)pt"
     }
 
     var body: some View {
@@ -110,7 +120,7 @@ struct NotchLiveEditOverlay: View {
 
             // Mirror the same clamp NotchView applies for `.offset(x:)`.
             let clampedOffset = NotchHardwareDetector.clampedHorizontalOffset(
-                storedOffset: store.customization.horizontalOffset,
+                storedOffset: store.customization.geometry(for: screenID).horizontalOffset,
                 runtimeWidth: visibleNotchWidth,
                 screenWidth: panelWidth
             )
@@ -174,11 +184,11 @@ struct NotchLiveEditOverlay: View {
                             DragGesture(minimumDistance: 0)
                                 .onChanged { value in
                                     if dragStartOffset == nil {
-                                        dragStartOffset = store.customization.horizontalOffset
+                                        dragStartOffset = store.customization.geometry(for: screenID).horizontalOffset
                                     }
                                     let start = dragStartOffset ?? 0
-                                    store.update {
-                                        $0.horizontalOffset = start + value.translation.width
+                                    store.updateGeometry(for: screenID) { geo in
+                                        geo.horizontalOffset = start + value.translation.width
                                     }
                                 }
                                 .onEnded { _ in
@@ -195,9 +205,16 @@ struct NotchLiveEditOverlay: View {
                 arrowButton(direction: +1, label: "Grow notch")
                     .position(x: notchRightX + 28, y: notchVerticalCenter)
 
+                // 4b. Height arrow buttons (▼ ▲) below the notch.
+                // Left: decrease height, Right: increase height.
+                heightArrowButton(direction: -1, label: "Decrease notch height")
+                    .position(x: notchCenterX - 22, y: visibleNotchHeight + 14)
+
+                heightArrowButton(direction: +1, label: "Increase notch height")
+                    .position(x: notchCenterX + 22, y: visibleNotchHeight + 14)
+
                 // 5. Live width + offset readout — small monospaced
-                //    label below the notch so the user can see exact
-                //    numbers as they drag the arrows / move the notch.
+                //    label below the height arrows so it doesn't overlap.
                 Text(readoutText)
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundColor(.white.opacity(0.7))
@@ -206,7 +223,7 @@ struct NotchLiveEditOverlay: View {
                     .background(
                         Capsule().fill(Color.black.opacity(0.6))
                     )
-                    .position(x: notchCenterX, y: visibleNotchHeight + 24)
+                    .position(x: notchCenterX, y: visibleNotchHeight + 44)
                     .accessibilityHidden(true)
 
                 // 6. Action row + Reset + Save/Cancel — stacked
@@ -244,9 +261,10 @@ struct NotchLiveEditOverlay: View {
                             enabled: true
                         ) {
                             withAnimation(.easeInOut(duration: 0.25)) {
-                                store.update {
-                                    $0.maxWidth = NotchCustomization.default.maxWidth
-                                    $0.horizontalOffset = NotchCustomization.default.horizontalOffset
+                                store.updateGeometry(for: screenID) { geo in
+                                    geo.maxWidth = ScreenGeometry.default.maxWidth
+                                    geo.horizontalOffset = ScreenGeometry.default.horizontalOffset
+                                    geo.notchHeight = ScreenGeometry.default.notchHeight
                                 }
                                 subMode = .resize
                                 dragStartOffset = nil
@@ -295,7 +313,7 @@ struct NotchLiveEditOverlay: View {
                         .accessibilityLabel("Cancel notch customization")
                     }
                 }
-                .position(x: notchCenterX, y: visibleNotchHeight + 70)
+                .position(x: notchCenterX, y: visibleNotchHeight + 90)
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
         }
@@ -319,6 +337,40 @@ struct NotchLiveEditOverlay: View {
         .accessibilityHint("Hold Command for a larger step, hold Option for a finer step.")
     }
 
+    private func heightArrowButton(direction: Int, label: String) -> some View {
+        Button {
+            applyHeightStep(direction: direction)
+        } label: {
+            Image(systemName: direction > 0 ? "chevron.down" : "chevron.up")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(hasHardwareNotch ? .white.opacity(0.35) : .black)
+                .frame(width: 32, height: 32)
+                .background(Circle().fill(hasHardwareNotch ? Color.black.opacity(0.5) : neonGreen))
+                .shadow(color: hasHardwareNotch ? .clear : neonGreen.opacity(0.45), radius: 6)
+        }
+        .buttonStyle(.plain)
+        .disabled(hasHardwareNotch)
+        .accessibilityLabel(label)
+        .accessibilityHint(hasHardwareNotch ? "Disabled: hardware notch height is fixed" : "Hold Command for a larger step, hold Option for a finer step.")
+    }
+
+    private func applyHeightStep(direction: Int) {
+        let flags = NSEvent.modifierFlags
+        let step: CGFloat
+        if flags.contains(.command) {
+            step = 10
+        } else if flags.contains(.option) {
+            step = 1
+        } else {
+            step = 4
+        }
+        store.updateGeometry(for: screenID) { geo in
+            geo.notchHeight = NotchHardwareDetector.clampedHeight(
+                geo.notchHeight + CGFloat(direction) * step
+            )
+        }
+    }
+
     private func applyArrowStep(direction: Int) {
         let flags = NSEvent.modifierFlags
         let step: CGFloat
@@ -329,10 +381,10 @@ struct NotchLiveEditOverlay: View {
         } else {
             step = 4
         }
-        store.update { c in
-            c.maxWidth = max(
+        store.updateGeometry(for: screenID) { geo in
+            geo.maxWidth = max(
                 NotchHardwareDetector.minIdleWidth,
-                c.maxWidth + CGFloat(direction) * step
+                geo.maxWidth + CGFloat(direction) * step
             )
         }
     }
@@ -343,9 +395,9 @@ struct NotchLiveEditOverlay: View {
             mode: store.customization.hardwareNotchMode
         )
         guard width > 0 else { return }
-        store.update { c in
-            c.maxWidth = width + 20
-            c.horizontalOffset = 0
+        store.updateGeometry(for: screenID) { geo in
+            geo.maxWidth = width + 20
+            geo.horizontalOffset = 0
         }
         // Flash the dashed marker for ~2s.
         withAnimation(.easeIn(duration: 0.2)) {

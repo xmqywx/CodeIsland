@@ -33,7 +33,6 @@ struct TerminalAppRegistry: Sendable {
         "Code - Insiders",
         "Cursor",
         "Windsurf",
-        "codex",          // Codex CLI
         "zed",
         "Zellij"
     ]
@@ -75,7 +74,6 @@ struct TerminalAppRegistry: Sendable {
             ("tabby", "Tabby"),
             ("cmux", "cmux"),
             ("zellij", "Zellij"),
-            ("codex", "Codex"),      // must be before "code" to avoid VS Code match
             ("electron", "VS Code"), // VS Code binary name as seen in ps on macOS
             ("code", "VS Code"),
             ("cursor", "Cursor"),

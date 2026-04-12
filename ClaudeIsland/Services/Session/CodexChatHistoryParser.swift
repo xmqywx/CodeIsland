@@ -7,24 +7,46 @@
 //
 
 import Foundation
+import os.log
 
-enum CodexChatHistoryParser {
+actor CodexChatHistoryParser {
+    static let shared = CodexChatHistoryParser()
+    nonisolated static let logger = Logger(subsystem: "com.codeisland", category: "CodexParser")
+
+    private struct CachedResult {
+        let modificationDate: Date
+        let messages: [ChatMessage]
+    }
+    private var cache: [String: CachedResult] = [:]
 
     /// Parse a rollout JSONL file into an ordered array of ChatMessages.
-    static func parse(transcriptPath: String) -> [ChatMessage] {
-        guard let contents = try? String(contentsOf: URL(fileURLWithPath: transcriptPath), encoding: .utf8)
-        else { return [] }
+    /// Uses modification-date caching to avoid re-parsing unchanged files.
+    func parse(transcriptPath: String) -> [ChatMessage] {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: transcriptPath),
+              let attrs = try? fileManager.attributesOfItem(atPath: transcriptPath),
+              let modDate = attrs[.modificationDate] as? Date else {
+            return []
+        }
+
+        if let cached = cache[transcriptPath], cached.modificationDate == modDate {
+            return cached.messages
+        }
+
+        guard let contents = try? String(contentsOf: URL(fileURLWithPath: transcriptPath), encoding: .utf8) else {
+            return []
+        }
 
         var messages: [ChatMessage] = []
         var counter = 0
 
         // First pass: collect response_item messages (authoritative, full content)
         contents.enumerateLines { line, _ in
-            guard let object = jsonObject(for: line),
+            guard let object = self.jsonObject(for: line),
                   object["type"] as? String == "response_item" else { return }
-            let timestamp = parseTimestamp(object["timestamp"] as? String) ?? Date()
+            let timestamp = self.parseTimestamp(object["timestamp"] as? String) ?? Date()
             let payload = object["payload"] as? [String: Any] ?? [:]
-            if let msg = parseResponseItem(payload, timestamp: timestamp, counter: &counter) {
+            if let msg = self.parseResponseItem(payload, timestamp: timestamp, counter: &counter) {
                 messages.append(msg)
             }
         }
@@ -32,22 +54,23 @@ enum CodexChatHistoryParser {
         // Fall back to event_msg stream if no response_item messages were found
         if messages.isEmpty {
             contents.enumerateLines { line, _ in
-                guard let object = jsonObject(for: line),
+                guard let object = self.jsonObject(for: line),
                       object["type"] as? String == "event_msg" else { return }
-                let timestamp = parseTimestamp(object["timestamp"] as? String) ?? Date()
+                let timestamp = self.parseTimestamp(object["timestamp"] as? String) ?? Date()
                 let payload = object["payload"] as? [String: Any] ?? [:]
-                if let msg = parseEventMsg(payload, timestamp: timestamp, counter: &counter) {
+                if let msg = self.parseEventMsg(payload, timestamp: timestamp, counter: &counter) {
                     messages.append(msg)
                 }
             }
         }
 
+        cache[transcriptPath] = CachedResult(modificationDate: modDate, messages: messages)
         return messages
     }
 
     // MARK: - Private
 
-    private static func parseResponseItem(
+    private func parseResponseItem(
         _ payload: [String: Any],
         timestamp: Date,
         counter: inout Int
@@ -74,7 +97,7 @@ enum CodexChatHistoryParser {
         return ChatMessage(id: "codex-\(counter)", role: role, timestamp: timestamp, content: blocks)
     }
 
-    private static func parseEventMsg(
+    private func parseEventMsg(
         _ payload: [String: Any],
         timestamp: Date,
         counter: inout Int
@@ -94,7 +117,7 @@ enum CodexChatHistoryParser {
         return ChatMessage(id: "codex-evt-\(counter)", role: role, timestamp: timestamp, content: [.text(text)])
     }
 
-    private static func isInjectedBlock(_ text: String) -> Bool {
+    private func isInjectedBlock(_ text: String) -> Bool {
         text.hasPrefix("# AGENTS.md instructions for ")
             || text.hasPrefix("<environment_context>")
             || text.hasPrefix("<permissions instructions>")
@@ -102,14 +125,14 @@ enum CodexChatHistoryParser {
             || text.hasPrefix("<skills_instructions>")
     }
 
-    private static func jsonObject(for line: String) -> [String: Any]? {
+    private func jsonObject(for line: String) -> [String: Any]? {
         guard let data = line.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data),
               let dictionary = object as? [String: Any] else { return nil }
         return dictionary
     }
 
-    private static func parseTimestamp(_ string: String?) -> Date? {
+    private func parseTimestamp(_ string: String?) -> Date? {
         guard let string else { return nil }
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

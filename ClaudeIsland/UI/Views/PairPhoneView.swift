@@ -45,6 +45,7 @@ struct PairPhoneRow: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(isHovered ? Color.white.opacity(0.08) : Color.clear)
@@ -194,6 +195,7 @@ private struct QRPairingContentView: View {
             RoundedRectangle(cornerRadius: 20)
                 .strokeBorder(Self.cardText.opacity(0.1), lineWidth: 0.5)
         )
+        .clipShape(RoundedRectangle(cornerRadius: 20))
         .onAppear {
             generateQRCode()
             Task { await refreshLinkedDevices() }
@@ -268,7 +270,7 @@ private struct QRPairingContentView: View {
 
         // Linked devices section
         if !linkedDevices.isEmpty {
-            VStack(spacing: 0) {
+            VStack(spacing: 4) {
                 HStack {
                     Text("Linked Devices")
                         .font(.system(size: 10, weight: .semibold))
