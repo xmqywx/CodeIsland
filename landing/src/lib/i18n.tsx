@@ -17,6 +17,7 @@ const translations = {
   "sidenav.codelight": { zh: "Code Light", en: "Code Light" },
   "sidenav.opensource": { zh: "开源", en: "Open Source" },
   "sidenav.pricing": { zh: "定价", en: "Pricing" },
+  "sidenav.plugins": { zh: "插件", en: "Plugins" },
   "sidenav.faq": { zh: "FAQ", en: "FAQ" },
 
   // Hero
@@ -60,7 +61,7 @@ const translations = {
   "demo.jumpSub": { zh: "一键跳到对应的终端标签页和分屏。", en: "One click to the exact tab and split pane in cmux or iTerm2." },
 
   // Features (MioIsland)
-  "features.tag": { zh: "功能特性", en: "FEATURES" },
+  "features.tag": { zh: "MAC 端功能", en: "MAC FEATURES" },
   "features.title": { zh: "全部塞进刘海里", en: "Everything in the notch" },
   "features.monitor.title": { zh: "灵动岛实时监控", en: "Real-time Monitoring" },
   "features.monitor.desc": { zh: "折叠态左右翼显示状态圆点、Buddy 图标、项目名。青色=进行中，绿色=完成，红色=出错。", en: "Collapsed notch wings show status dots, buddy icon, and project name. Cyan=working, green=done, red=error." },
@@ -99,8 +100,8 @@ const translations = {
   "codelight.f3.desc": { zh: "/model /cost /usage 远程执行带回显", en: "/model /cost /usage — remote execution with round-trip" },
   "codelight.f4.title": { zh: "远程启动", en: "Remote Launch" },
   "codelight.f4.desc": { zh: "一键 spawn cmux workspace 新会话", en: "Spawn a new cmux workspace with one tap" },
-  "codelight.f5.title": { zh: "图片附件", en: "Image Attach" },
-  "codelight.f5.desc": { zh: "拍照直接发给 Claude 分析", en: "Take a photo and send it to Claude" },
+  "codelight.f5.title": { zh: "图片 + 截屏", en: "Images + Screenshot" },
+  "codelight.f5.desc": { zh: "拍照发给 Claude 分析，或远程请求 Mac 截屏", en: "Send photos to Claude, or remotely request Mac screenshots" },
   "codelight.f6.title": { zh: "永久配对码", en: "Permanent Pairing" },
   "codelight.f6.desc": { zh: "6 位配对码重启不变，多设备同时配对", en: "6-char code survives restarts, multi-device pairing" },
   "codelight.f7.title": { zh: "端到端加密", en: "E2E Encrypted" },
@@ -155,6 +156,21 @@ const translations = {
   "pricing.mioisland.cta": { zh: "免费下载", en: "Download Free" },
   "pricing.feedback": { zh: "公测期间欢迎尽情体验，你的反馈会直接影响正式版的功能和定价。", en: "Enjoy full access during beta. Your feedback directly shapes the final product and pricing." },
 
+  // Plugins
+  "plugins.tag": { zh: "插件生态", en: "PLUGIN ECOSYSTEM" },
+  "plugins.title": { zh: "用插件打造你的专属刘海", en: "Customize your notch with plugins" },
+  "plugins.desc": { zh: "主题、宠物、音效、工具——通过插件市场无限扩展你的灵动岛体验。开发者也可以创建并发布自己的插件。", en: "Themes, buddies, sounds, utilities — extend your Dynamic Island experience with the plugin marketplace. Developers can create and publish their own plugins too." },
+  "plugins.theme.title": { zh: "主题插件", en: "Themes" },
+  "plugins.theme.desc": { zh: "渐变背景、发光边框、自定义配色——让刘海成为你的个性标签", en: "Gradient backgrounds, glowing borders, custom palettes — make the notch uniquely yours" },
+  "plugins.buddy.title": { zh: "伙伴精灵", en: "Buddy Spirits" },
+  "plugins.buddy.desc": { zh: "可爱的像素宠物住在你的刘海里，陪你写代码", en: "Cute pixel pets live in your notch, keeping you company while you code" },
+  "plugins.sound.title": { zh: "音效包", en: "Sound Packs" },
+  "plugins.sound.desc": { zh: "8-bit 芯片音、自然白噪声、机械键盘音——每个事件专属音效", en: "8-bit chiptunes, nature ambience, mechanical keys — unique sounds for every event" },
+  "plugins.utility.title": { zh: "实用工具", en: "Utilities" },
+  "plugins.utility.desc": { zh: "番茄钟、天气、快捷指令——开发者社区持续扩展中", en: "Pomodoro timer, weather, shortcuts — the developer community keeps building" },
+  "plugins.browse": { zh: "浏览插件商店", en: "Browse Plugin Store" },
+  "plugins.developer": { zh: "成为开发者", en: "Become a Developer" },
+
   // FAQ
   "faq.tag": { zh: "常见问题", en: "FAQ" },
   "faq.title": { zh: "你可能想知道", en: "Frequently asked questions" },
@@ -163,13 +179,15 @@ const translations = {
   "faq.q2": { zh: "Code Light 是什么？", en: "What is Code Light?" },
   "faq.a2": { zh: "Code Light 是 MioIsland 的 iPhone 伴侣应用。它让你在手机上远程监控和控制 Mac 上的 Claude Code，包括实时状态同步、远程审批、斜杠命令等，离开工位也能掌控编程进度。", en: "Code Light is the iPhone companion app for MioIsland. It lets you remotely monitor and control Claude Code on your Mac — real-time status sync, remote approval, slash commands, and more. Stay in control even away from your desk." },
   "faq.q3": { zh: "收费吗？", en: "Is it free?" },
-  "faq.a3": { zh: "MioIsland (Mac) 永久免费开源（CC BY-NC 4.0）。Code Light (iPhone) 目前公测期间完全免费，正式版将转为付费应用，定价待定。", en: "MioIsland (Mac) is free and open source forever (CC BY-NC 4.0). Code Light (iPhone) is completely free during the beta period. It will become a paid app after beta — pricing TBD." },
+  "faq.a3": { zh: "MioIsland (Mac) 永久免费开源（CC BY-NC 4.0）。Code Light (iPhone) 目前公测期间完全免费，正式版将转为付费应用，定价待定。此外，插件商店中的部分高级插件可能为付费内容，开发者可以通过发布插件获得收入。", en: "MioIsland (Mac) is free and open source forever (CC BY-NC 4.0). Code Light (iPhone) is completely free during the beta period. It will become a paid app after beta — pricing TBD. Additionally, some premium plugins in the plugin store may be paid, and developers can earn revenue by publishing plugins." },
   "faq.q4": { zh: "支持哪些终端？", en: "Which terminals are supported?" },
   "faq.a4": { zh: "支持 Ghostty、iTerm2、Warp、Terminal、Kitty、Alacritty、WezTerm、Hyper、Tabby、Rio、cmux 等十几种主流终端，可精确跳转到对应标签页和分屏。", en: "Supports Ghostty, iTerm2, Warp, Terminal, Kitty, Alacritty, WezTerm, Hyper, Tabby, Rio, cmux and 10+ more. Jumps to the exact tab and split pane." },
   "faq.q5": { zh: "不用 Claude Code 能用吗？", en: "Does it work without Claude Code?" },
   "faq.a5": { zh: "MioIsland 专为 Claude Code 设计，也支持 OpenAI Codex。暂不支持其他 AI 编程工具。后续会根据社区需求考虑更多集成。", en: "MioIsland is designed specifically for Claude Code, and also supports OpenAI Codex. Other AI coding tools are not supported yet. More integrations may come based on community demand." },
   "faq.q6": { zh: "我的代码数据安全吗？", en: "Is my code data safe?" },
   "faq.a6": { zh: "绝对安全。Mac 和 iPhone 之间通过零知识中继通信，服务器不存储任何数据，端到端加密。你还可以自托管中继服务器，数据完全由你掌控。", en: "Absolutely. Communication between Mac and iPhone uses a zero-knowledge relay — no data is stored on the server, fully end-to-end encrypted. You can also self-host the relay server for complete control." },
+  "faq.q7": { zh: "什么是插件？怎么安装？", en: "What are plugins? How to install?" },
+  "faq.a7": { zh: "插件是第三方开发者或官方制作的扩展包，包括主题、伙伴精灵、音效和工具。在 MioIsland 设置中打开插件商店即可一键安装。开发者也可以通过 miomio.chat 发布自己的插件。", en: "Plugins are extension packs made by third-party developers or officially, including themes, buddy spirits, sound effects, and utilities. Open the plugin store in MioIsland settings to install with one click. Developers can also publish their own plugins via miomio.chat." },
 
   // OpenSource
   "os.title": { zh: "开源免费", en: "Open Source & Free" },

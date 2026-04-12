@@ -4,6 +4,7 @@ import SideNav from "./components/SideNav"
 import Hero from "./components/Hero"
 import NotchDemo from "./components/NotchDemo"
 import Features from "./components/Features"
+import Plugins from "./components/Plugins"
 import CodeLight from "./components/CodeLight"
 import HowItWorks from "./components/HowItWorks"
 import Pricing from "./components/Pricing"
@@ -19,6 +20,7 @@ function App() {
       <Hero />
       <NotchDemo />
       <Features />
+      <Plugins />
       <CodeLight />
       <HowItWorks />
       <Pricing />

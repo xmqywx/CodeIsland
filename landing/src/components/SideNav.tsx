@@ -1,6 +1,6 @@
 import Dock from "./reactbits/Dock"
 import type { DockItemData } from "./reactbits/Dock"
-import { Monitor, Zap, Smartphone, Rocket, DollarSign, HelpCircle, GitBranch } from "lucide-react"
+import { Monitor, Zap, Puzzle, Smartphone, Rocket, DollarSign, HelpCircle, GitBranch } from "lucide-react"
 import { useI18n } from "../lib/i18n"
 
 export default function SideNav() {
@@ -20,6 +20,11 @@ export default function SideNav() {
       icon: <Zap size={18} className="text-white" />,
       label: t("nav.features" as any),
       onClick: () => scrollTo("features"),
+    },
+    {
+      icon: <Puzzle size={18} className="text-white" />,
+      label: t("sidenav.plugins" as any),
+      onClick: () => scrollTo("plugins"),
     },
     {
       icon: <Smartphone size={18} className="text-white" />,
