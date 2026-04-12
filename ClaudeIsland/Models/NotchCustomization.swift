@@ -38,18 +38,23 @@ struct NotchCustomization: Codable, Equatable {
     // Hardware notch override
     var hardwareNotchMode: HardwareNotchMode
 
+    // Hover expand speed
+    var hoverSpeed: HoverSpeed = .normal
+
     init(
         theme: NotchThemeID = .classic,
         fontScale: FontScale = .default,
         showBuddy: Bool = true,
         showUsageBar: Bool = true,
-        hardwareNotchMode: HardwareNotchMode = .auto
+        hardwareNotchMode: HardwareNotchMode = .auto,
+        hoverSpeed: HoverSpeed = .normal
     ) {
         self.theme = theme
         self.fontScale = fontScale
         self.showBuddy = showBuddy
         self.showUsageBar = showUsageBar
         self.hardwareNotchMode = hardwareNotchMode
+        self.hoverSpeed = hoverSpeed
     }
 
     static let `default` = NotchCustomization()
@@ -76,7 +81,7 @@ struct NotchCustomization: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case theme, fontScale, showBuddy, showUsageBar,
-             hardwareNotchMode, screenGeometries, defaultGeometry,
+             hardwareNotchMode, hoverSpeed, screenGeometries, defaultGeometry,
              maxWidth, horizontalOffset // legacy keys for migration
     }
 
@@ -87,6 +92,7 @@ struct NotchCustomization: Codable, Equatable {
         self.showBuddy = try c.decodeIfPresent(Bool.self, forKey: .showBuddy) ?? true
         self.showUsageBar = try c.decodeIfPresent(Bool.self, forKey: .showUsageBar) ?? true
         self.hardwareNotchMode = try c.decodeIfPresent(HardwareNotchMode.self, forKey: .hardwareNotchMode) ?? .auto
+        self.hoverSpeed = try c.decodeIfPresent(HoverSpeed.self, forKey: .hoverSpeed) ?? .normal
         self.screenGeometries = try c.decodeIfPresent([String: ScreenGeometry].self, forKey: .screenGeometries) ?? [:]
 
         if let existing = try c.decodeIfPresent(ScreenGeometry.self, forKey: .defaultGeometry) {
@@ -121,12 +127,20 @@ struct NotchCustomization: Codable, Equatable {
 /// Identifier for one of the six built-in themes. Raw string values
 /// so persisted JSON is stable across code renames.
 enum NotchThemeID: String, Codable, CaseIterable, Identifiable {
+    // Free themes
     case classic
     case paper
     case neonLime
     case cyber
     case mint
     case sunset
+    // Premium themes
+    case rosegold
+    case ocean
+    case aurora
+    case mocha
+    case lavender
+    case cherry
 
     var id: String { rawValue }
 }
@@ -162,4 +176,22 @@ enum FontScale: String, Codable, CaseIterable {
 enum HardwareNotchMode: String, Codable {
     case auto
     case forceVirtual
+}
+
+/// How fast the notch expands when the mouse hovers over it.
+enum HoverSpeed: String, Codable, CaseIterable, Identifiable {
+    case instant  // 0s — expand immediately
+    case normal   // 1s delay (default)
+    case slow     // 2s delay
+
+    var id: String { rawValue }
+
+    /// Delay in seconds before the notch expands on hover.
+    var delay: TimeInterval {
+        switch self {
+        case .instant: return 0.0
+        case .normal:  return 0.5
+        case .slow:    return 1.0
+        }
+    }
 }

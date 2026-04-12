@@ -296,6 +296,16 @@ enum L10n {
     static var notchThemeCyber: String { tr("Cyber", "赛博") }
     static var notchThemeMint: String { tr("Mint", "薄荷") }
     static var notchThemeSunset: String { tr("Sunset", "日落") }
+    static var notchThemeRosegold: String { tr("Rosé Gold", "玫瑰金") }
+    static var notchThemeOcean: String { tr("Ocean", "深海") }
+    static var notchThemeAurora: String { tr("Aurora", "极光") }
+    static var notchThemeMocha: String { tr("Mocha", "摩卡") }
+    static var notchThemeLavender: String { tr("Lavender", "薰衣草") }
+    static var notchThemeCherry: String { tr("Cherry", "樱桃") }
+    static var notchHoverSpeed: String { tr("Hover Speed", "展开速度") }
+    static var notchHoverInstant: String { tr("Fast", "即时") }
+    static var notchHoverNormal: String { tr("1s", "1秒") }
+    static var notchHoverSlow: String { tr("2s", "2秒") }
     static var notchFontSize: String { tr("Font Size", "字号") }
     static var notchFontSmall: String { tr("S", "小") }
     static var notchFontDefault: String { tr("M", "中") }
@@ -325,6 +335,12 @@ enum L10n {
         case .cyber:    return notchThemeCyber
         case .mint:     return notchThemeMint
         case .sunset:   return notchThemeSunset
+        case .rosegold: return notchThemeRosegold
+        case .ocean:    return notchThemeOcean
+        case .aurora:   return notchThemeAurora
+        case .mocha:    return notchThemeMocha
+        case .lavender: return notchThemeLavender
+        case .cherry:   return notchThemeCherry
         }
     }
 }

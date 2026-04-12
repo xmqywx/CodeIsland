@@ -259,14 +259,20 @@ class NotchViewModel: ObservableObject {
         hoverTimer?.cancel()
         hoverTimer = nil
 
-        // Start hover timer to auto-expand after 1 second
+        // Start hover timer to auto-expand after configured delay
         if isHovering && (status == .closed || status == .popping) {
-            let workItem = DispatchWorkItem { [weak self] in
-                guard let self = self, self.isHovering else { return }
-                self.notchOpen(reason: .hover)
+            let delay = NotchCustomizationStore.shared.customization.hoverSpeed.delay
+            if delay <= 0 {
+                // Instant: expand immediately
+                notchOpen(reason: .hover)
+            } else {
+                let workItem = DispatchWorkItem { [weak self] in
+                    guard let self = self, self.isHovering else { return }
+                    self.notchOpen(reason: .hover)
+                }
+                hoverTimer = workItem
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
             }
-            hoverTimer = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: workItem)
         }
     }
 

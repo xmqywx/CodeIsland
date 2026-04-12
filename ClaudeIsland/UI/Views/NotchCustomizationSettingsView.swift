@@ -31,6 +31,7 @@ struct NotchCustomizationSettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             themeRow
             fontSizeRow
+            hoverSpeedRow
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                 visibilityToggle(
@@ -138,6 +139,44 @@ struct NotchCustomizationSettingsView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
+    }
+
+    // MARK: - Hover speed segmented picker row
+
+    private var hoverSpeedRow: some View {
+        controlRow(icon: "cursorarrow.motionlines", label: L10n.notchHoverSpeed) {
+            HStack(spacing: 0) {
+                hoverSpeedSegment(.instant, shortLabel: L10n.notchHoverInstant)
+                hoverSpeedSegment(.normal,  shortLabel: L10n.notchHoverNormal)
+                hoverSpeedSegment(.slow,    shortLabel: L10n.notchHoverSlow)
+            }
+            .padding(2)
+            .background(
+                RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.06))
+            )
+        }
+    }
+
+    private func hoverSpeedSegment(
+        _ speed: HoverSpeed,
+        shortLabel: String
+    ) -> some View {
+        Button {
+            store.update { $0.hoverSpeed = speed }
+        } label: {
+            Text(shortLabel)
+                .font(.system(size: 11, weight: store.customization.hoverSpeed == speed ? .bold : .medium))
+                .foregroundColor(store.customization.hoverSpeed == speed ? .black : .white.opacity(0.7))
+                .frame(minWidth: 30)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(store.customization.hoverSpeed == speed ? Self.brandLime : Color.clear)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(shortLabel)
     }
 
     // MARK: - Visibility toggle (TabToggle-style)
