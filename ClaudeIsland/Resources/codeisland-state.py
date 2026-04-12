@@ -2,15 +2,60 @@
 """
 Code Island Hook
 - Sends session state to CodeIsland.app via Unix socket
-- For PermissionRequest: waits for user decision from the app
+- For PermissionRequest: waits for user decision from the app with segmented timeout
 """
 import json
 import os
 import socket
 import sys
+import time
 
 SOCKET_PATH = "/tmp/codeisland.sock"
-TIMEOUT_SECONDS = 300  # 5 minutes for permission decisions
+TIMEOUT_SECONDS = 300  # Total budget for permission decisions (5 min)
+SOCKET_TIMEOUT = 30    # Per-attempt socket read timeout
+POLL_INTERVAL = 2       # Seconds between polling attempts
+
+# Load config from environment or config file (~/.codeisland/relay.conf)
+def load_config():
+    """Load config from env vars or ~/.codeisland/relay.conf"""
+    config_file = os.path.expanduser("~/.codeisland/relay.conf")
+
+    # Env vars override config file (even if empty string - use "" to force Unix socket mode)
+    relay_host = os.environ.get("CODEISLAND_RELAY_HOST", "")
+    relay_port = os.environ.get("CODEISLAND_RELAY_PORT", "")
+    psk = os.environ.get("CODEISLAND_PSK", "")
+
+    if not relay_host or not relay_port or not psk:
+        if os.path.exists(config_file):
+            try:
+                with open(config_file) as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith("#"):
+                            continue
+                        if "=" in line:
+                            key, value = line.split("=", 1)
+                            key = key.strip()
+                            value = value.strip()
+                            # Only use config value if env var was not set (empty string means Unix socket)
+                            if key == "RELAY_HOST" and relay_host == "":
+                                relay_host = value
+                            elif key == "RELAY_PORT" and relay_port == "":
+                                relay_port = value
+                            elif key == "PSK" and psk == "":
+                                psk = value
+            except Exception as e:
+                import sys
+                print(f"Failed to load config from {config_file}: {e}", file=sys.stderr)
+
+    # Empty RELAY_HOST means use Unix socket (local mode)
+    return (
+        relay_host if relay_host != "" else None,  # None = Unix socket
+        int(relay_port) if relay_port else 0,
+        psk
+    )
+
+RELAY_HOST, RELAY_PORT, PSK = load_config()
 
 
 def get_tty():
@@ -49,66 +94,216 @@ def get_tty():
     return None
 
 
-def detect_terminal_app():
-    """Detect terminal from environment variables — more reliable than process tree on macOS."""
-    env = os.environ
-    # Check multiplexers first (innermost layer)
-    if env.get("ZELLIJ") is not None:   # ZELLIJ key present (value may be "0")
-        return "Zellij"
-    if env.get("TMUX"):
-        return "tmux"
-    # Then outer terminal emulator
-    if env.get("GHOSTTY_RESOURCES_DIR") or env.get("TERM_PROGRAM") == "ghostty":
-        return "Ghostty"
-    if env.get("ITERM_SESSION_ID") or env.get("LC_TERMINAL") == "iTerm2":
-        return "iTerm2"
-    term = env.get("TERM_PROGRAM", "").lower()
-    if term == "apple_terminal":
-        return "Terminal"
-    if "warp" in term:
-        return "Warp"
-    if "wezterm" in term:
-        return "WezTerm"
-    if "vscode" in term:
-        return "VS Code"
-    if env.get("CMUX_SOCKET_PATH"):
-        return "cmux"
-    return None
+def parse_conversation_info(session_id):
+    """Parse conversation info from JSONL file for remote session display.
+
+    Returns dict with: conversation_summary, conversation_first_message,
+    conversation_latest_message, conversation_last_tool
+    """
+    jsonl_path = os.path.expanduser(f"~/.claude/sessions/{session_id}.jsonl")
+
+    result = {
+        "conversation_summary": None,
+        "conversation_first_message": None,
+        "conversation_latest_message": None,
+        "conversation_last_tool": None,
+    }
+
+    if not os.path.exists(jsonl_path):
+        return result
+
+    try:
+        with open(jsonl_path, "r") as f:
+            lines = f.readlines()
+
+        if not lines:
+            return result
+
+        first_message = None
+        latest_message = None
+        last_tool = None
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+                msg_type = entry.get("type", "")
+                message = entry.get("message", {})
+
+                # Track first human message
+                if msg_type == "human" and first_message is None:
+                    # Get text content from message
+                    if isinstance(message, dict):
+                        content = message.get("content", [])
+                        if isinstance(content, list):
+                            text = " ".join(c.get("text", "") for c in content if c.get("type") == "text")
+                        else:
+                            text = str(content)
+                    else:
+                        text = str(message)
+                    first_message = text[:200] if text else None  # Limit length
+
+                # Track latest message (prefer human, fall back to assistant)
+                if msg_type in ("human", "assistant"):
+                    if isinstance(message, dict):
+                        content = message.get("content", [])
+                        if isinstance(content, list):
+                            text = " ".join(c.get("text", "") for c in content if c.get("type") == "text")
+                        else:
+                            text = str(content)
+                    else:
+                        text = str(message)
+                    latest_message = text[:200] if text else None
+
+                # Track last tool usage
+                if msg_type == "assistant":
+                    tool_calls = entry.get("message", {}).get("tool_calls", [])
+                    if tool_calls:
+                        last_tool = tool_calls[-1].get("function", {}).get("name")
+
+            except (json.JSONDecodeError, KeyError, TypeError):
+                continue
+
+        result["conversation_first_message"] = first_message
+        result["conversation_latest_message"] = latest_message
+        result["conversation_last_tool"] = last_tool
+
+        # Generate summary from latest message
+        if latest_message:
+            result["conversation_summary"] = latest_message[:100] + "..." if len(latest_message) > 100 else latest_message
+
+    except (OSError, IOError) as e:
+        pass
+
+    return result
+
+
+def send_msg(s, msg):
+    """Send length-prefixed JSON message"""
+    try:
+        data = json.dumps(msg).encode()
+        s.sendall(len(data).to_bytes(4, "big"))
+        s.sendall(data)
+        return True
+    except (socket.error, OSError):
+        return False
+
+
+def recv_msg(s, timeout=None):
+    """Receive length-prefixed JSON message"""
+    if timeout:
+        s.settimeout(timeout)
+    len_bytes = b""
+    while len(len_bytes) < 4:
+        chunk = s.recv(4 - len(len_bytes))
+        if not chunk:
+            return None
+        len_bytes += chunk
+    msg_len = int.from_bytes(len_bytes, "big")
+    if msg_len <= 0 or msg_len > 1_000_000:
+        return None
+    data = b""
+    while len(data) < msg_len:
+        chunk = s.recv(min(4096, msg_len - len(data)))
+        if not chunk:
+            return None
+        data += chunk
+    return json.loads(data.decode())
+
+
+VERSION = "1.0.0"
+REMOTE_HOST = socket.gethostname()
+REMOTE_USER = os.environ.get("USER", "unknown")
 
 
 def send_event(state):
-    """Send event to app, return response if any"""
-    try:
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.settimeout(TIMEOUT_SECONDS)
-        sock.connect(SOCKET_PATH)
-        sock.sendall(json.dumps(state).encode())
+    """Send event to app, return response if any.
 
-        # For permission requests, wait for response
-        if state.get("status") == "waiting_for_approval":
-            response = sock.recv(4096)
-            sock.close()
-            if response:
-                return json.loads(response.decode())
+    For permission requests: uses segmented timeout (30s socket read + 2s polling)
+    up to TIMEOUT_SECONDS total. Falls back to 'ask' if total timeout exceeded,
+    allowing Claude Code to show its own permission UI.
+    """
+    try:
+        if RELAY_HOST and RELAY_PORT > 0 and PSK:
+            # Remote mode: TCP connection via SSH tunnel with framed+auth protocol
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect((RELAY_HOST, RELAY_PORT))
+
+            # Authenticate with PSK (short timeout for auth handshake)
+            if not send_msg(sock, {"type": "auth", "psk": PSK, "version": VERSION, "remoteHost": REMOTE_HOST, "remoteUser": REMOTE_USER}):
+                sock.close()
+                return None
+            resp = recv_msg(sock, timeout=10)
+            if resp is None or resp.get("type") != "auth_ok":
+                sock.close()
+                return None
+
+            if state.get("status") == "waiting_for_approval":
+                # Segmented timeout: poll with short reads, fallback on total budget exceeded
+                start_time = time.time()
+                last_poll = start_time
+
+                while time.time() - start_time < TIMEOUT_SECONDS:
+                    remaining = TIMEOUT_SECONDS - (time.time() - start_time)
+                    sock.settimeout(min(SOCKET_TIMEOUT, remaining))
+
+                    # Send event
+                    if not send_msg(sock, {"type": "hook_event", "event": state}):
+                        sock.close()
+                        return None
+
+                    # Wait for response with polling
+                    while time.time() - last_poll < POLL_INTERVAL:
+                        poll_remaining = POLL_INTERVAL - (time.time() - last_poll)
+                        sock.settimeout(min(poll_remaining, remaining))
+                        try:
+                            resp = recv_msg(sock, timeout=poll_remaining)
+                            if resp is not None:
+                                sock.close()
+                                return resp
+                        except socket.timeout:
+                            pass
+
+                        if time.time() - start_time >= TIMEOUT_SECONDS:
+                            break
+                        if time.time() - last_poll >= POLL_INTERVAL:
+                            break
+
+                    last_poll = time.time()
+
+                    # Send keepalive ping to let App know we're still waiting
+                    if not send_msg(sock, {"type": "hook_ping"}):
+                        break
+
+                # Total timeout exceeded — return 'ask' to fallback to Claude Code's native UI
+                sock.close()
+                return {"decision": "ask", "reason": "timeout"}
+            else:
+                # Non-blocking event: fire and forget
+                if not send_msg(sock, {"type": "hook_event", "event": state}):
+                    sock.close()
+                    return None
+                sock.close()
         else:
-            sock.close()
+            # Local mode: Unix socket with plain JSON (no segmented timeout — local is fast)
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.settimeout(TIMEOUT_SECONDS)
+            sock.connect(SOCKET_PATH)
+            sock.sendall(json.dumps(state).encode())
+
+            if state.get("status") == "waiting_for_approval":
+                response = sock.recv(4096)
+                sock.close()
+                if response:
+                    return json.loads(response.decode())
+            else:
+                sock.close()
 
         return None
     except (socket.error, OSError, json.JSONDecodeError):
         return None
-
-
-def _is_parent_codex():
-    """Check if the parent process is the Codex CLI (not Claude Code)."""
-    import subprocess
-    try:
-        result = subprocess.run(
-            ["ps", "-p", str(os.getppid()), "-o", "comm="],
-            capture_output=True, text=True, timeout=2
-        )
-        return "codex" in result.stdout.strip().lower()
-    except Exception:
-        return False
 
 
 def main():
@@ -120,17 +315,10 @@ def main():
     session_id = data.get("session_id", "unknown")
     event = data.get("hook_event_name", "")
     cwd = data.get("cwd", "")
-
-    # Filter out probe/telemetry sessions from third-party tools (e.g. CodexBar)
-    PROBE_MARKERS = ["ClaudeProbe", "CodexBar"]
-    if any(marker in cwd for marker in PROBE_MARKERS):
-        sys.exit(0)
     tool_input = data.get("tool_input", {})
 
-    # Detect Codex by checking the parent process name.
-    # Both Claude Code and Codex now send "model" and "permission_mode",
-    # so payload fields are unreliable. The parent process is the CLI binary itself.
-    is_codex = _is_parent_codex()
+    # Parse conversation info from JSONL for remote session display
+    conversation_info = parse_conversation_info(session_id)
 
     # Get process info
     claude_pid = os.getppid()
@@ -143,20 +331,11 @@ def main():
         "event": event,
         "pid": claude_pid,
         "tty": tty,
+        "conversation_summary": conversation_info["conversation_summary"],
+        "conversation_first_message": conversation_info["conversation_first_message"],
+        "conversation_latest_message": conversation_info["conversation_latest_message"],
+        "conversation_last_tool": conversation_info["conversation_last_tool"],
     }
-
-    # For non-Codex sessions, send env-detected terminal as a hint for Swift fallback
-    if not is_codex:
-        terminal_hint = detect_terminal_app()
-        if terminal_hint:
-            state["terminal_app"] = terminal_hint
-
-    # For Codex sessions, pass source marker and transcript path
-    if is_codex:
-        state["source"] = "codex"
-        transcript_path = data.get("transcript_path", "")
-        if transcript_path:
-            state["transcript_path"] = transcript_path
 
     # Map events to status
     if event == "UserPromptSubmit":
@@ -182,17 +361,13 @@ def main():
             state["tool_use_id"] = tool_use_id_from_event
 
     elif event == "PermissionRequest":
+        # This is where we can control the permission
+        state["status"] = "waiting_for_approval"
         state["tool"] = data.get("tool_name")
         state["tool_input"] = tool_input
         # tool_use_id lookup handled by Swift-side cache from PreToolUse
 
-        # AskUserQuestion: don't block — let Claude Code show its own
-        # permission prompt. The question UI is handled by PreToolUse.
-        if data.get("tool_name") == "AskUserQuestion":
-            sys.exit(0)
-
-        # Other tools: send to app and wait for decision
-        state["status"] = "waiting_for_approval"
+        # Send to app and wait for decision
         response = send_event(state)
 
         if response:

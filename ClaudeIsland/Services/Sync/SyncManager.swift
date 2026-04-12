@@ -21,7 +21,7 @@ final class SyncManager: ObservableObject {
     @Published private(set) var isEnabled = false
     @Published private(set) var connectionState: ServerConnectionState = .disconnected
 
-    private(set) var connection: ServerConnection?
+    private var connection: ServerConnection?
     private var relay: MessageRelay?
     private var rpcExecutor: RPCExecutor?
     private var capabilityTimer: Timer?
@@ -30,36 +30,6 @@ final class SyncManager: ObservableObject {
     /// Re-publishes the underlying ServerConnection.shortCode so SwiftUI views
     /// (PairPhoneView) can observe it via SyncManager directly.
     @Published private(set) var shortCode: String?
-
-    /// Text the phone injected into a Claude session via cmux. Used so MessageRelay
-    /// can skip re-uploading the same text when it re-appears in the JSONL (dedup).
-    /// Keyed by Claude session UUID; entries expire after 60s.
-    private var recentlyInjected: [String: [(text: String, at: Date)]] = [:]
-
-    func recordPhoneInjection(claudeUuid: String, text: String) {
-        pruneInjections()
-        recentlyInjected[claudeUuid, default: []].append((text, Date()))
-    }
-
-    /// Returns true and removes the entry if `text` was recently injected from phone.
-    func consumePhoneInjection(claudeUuid: String, text: String) -> Bool {
-        pruneInjections()
-        guard var list = recentlyInjected[claudeUuid] else { return false }
-        if let idx = list.firstIndex(where: { $0.text == text }) {
-            list.remove(at: idx)
-            recentlyInjected[claudeUuid] = list.isEmpty ? nil : list
-            return true
-        }
-        return false
-    }
-
-    private func pruneInjections() {
-        let cutoff = Date().addingTimeInterval(-60)
-        for (k, v) in recentlyInjected {
-            let kept = v.filter { $0.at > cutoff }
-            recentlyInjected[k] = kept.isEmpty ? nil : kept
-        }
-    }
 
     /// The server URL to connect to. Stored in UserDefaults.
     var serverUrl: String? {
@@ -125,6 +95,12 @@ final class SyncManager: ObservableObject {
             let rpc = RPCExecutor()
             self.rpcExecutor = rpc
 
+            // Restore persisted session mappings before starting relay
+            let savedMappings = await MessageOutbox.shared.allMappings
+            for (localId, serverId) in savedMappings {
+                relay.restoreServerSessionId(localId: localId, serverId: serverId)
+            }
+
             // Delay relay start to give socket time to connect
             Task { @MainActor in
                 // Wait up to 5 seconds for socket connection
@@ -135,6 +111,7 @@ final class SyncManager: ObservableObject {
 
                 if conn.isConnected {
                     relay.startRelaying()
+                    relay.scheduleOutboxDrain()
                     Self.logger.info("Relay started after socket connected")
                 } else {
                     Self.logger.warning("Socket did not connect in time, starting relay anyway")
@@ -224,7 +201,7 @@ final class SyncManager: ObservableObject {
                 Self.logger.warning("No images could be downloaded — falling back to text-only")
             } else {
                 let ok = await TerminalWriter.shared.sendImagesAndText(images: images, text: parsedText, claudeUuid: targetUuid, cwd: cwd, livePid: livePid)
-                if ok { recordPhoneInjection(claudeUuid: targetUuid, text: parsedText) }
+                if ok { await MessageOutbox.shared.recordInjection(claudeUuid: targetUuid, text: parsedText) }
                 Self.logger.info("Phone message with \(images.count) image(s) → terminal: \(ok ? "success" : "failed")")
                 return
             }
@@ -237,7 +214,7 @@ final class SyncManager: ObservableObject {
         // synthetic terminal_output message.
         if parsedText.hasPrefix("/"), let targetUuid {
             let output = await TerminalWriter.shared.sendSlashCommandAndCaptureOutput(parsedText, claudeUuid: targetUuid, cwd: cwd, livePid: livePid)
-            recordPhoneInjection(claudeUuid: targetUuid, text: parsedText)
+            await MessageOutbox.shared.recordInjection(claudeUuid: targetUuid, text: parsedText)
             if let output, !output.isEmpty {
                 await sendTerminalOutputMessage(sessionId: serverSessionId, command: parsedText, output: output)
             }
@@ -253,7 +230,7 @@ final class SyncManager: ObservableObject {
                 cwd: cwd,
                 livePid: livePid
             )
-            if sent { recordPhoneInjection(claudeUuid: uuid, text: parsedText) }
+            if sent { await MessageOutbox.shared.recordInjection(claudeUuid: uuid, text: parsedText) }
             Self.logger.info("Phone message → terminal (uuid=\(uuid.prefix(8), privacy: .public) pid=\(livePid?.description ?? "nil", privacy: .public)): \(sent ? "success" : "failed")")
             return
         }

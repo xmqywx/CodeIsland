@@ -8,11 +8,14 @@
 
 import Foundation
 import os.log
+import os.lock
 
 /// Logger for hook socket server
 private let logger = Logger(subsystem: "com.codeisland", category: "Hooks")
 
-/// Event received from Claude Code or Codex hooks
+// MARK: - TCP Relay Server
+
+/// Event received from Claude Code hooks
 struct HookEvent: Codable, Sendable {
     let sessionId: String
     let cwd: String
@@ -25,12 +28,15 @@ struct HookEvent: Codable, Sendable {
     let toolUseId: String?
     let notificationType: String?
     let message: String?
-    /// "codex" for Codex hook events; nil for Claude Code hook events
-    let source: String?
-    /// Rollout file path for Codex sessions (passed via transcript_path)
-    let transcriptPath: String?
-    /// Env-detected terminal app hint from hook script (fallback when process tree fails)
-    let terminalApp: String?
+    let remoteHost: String?
+    let remoteUser: String?
+    let remoteTmuxTarget: String?
+    let lastToolName: String?  // Set by hook to update UI immediately
+    /// Conversation summary fields parsed from JSONL by hook (enables remote session display)
+    let conversationSummary: String?
+    let conversationFirstMessage: String?
+    let conversationLatestMessage: String?
+    let conversationLastTool: String?
 
     enum CodingKeys: String, CodingKey {
         case sessionId = "session_id"
@@ -38,13 +44,72 @@ struct HookEvent: Codable, Sendable {
         case toolInput = "tool_input"
         case toolUseId = "tool_use_id"
         case notificationType = "notification_type"
-        case message, source
-        case transcriptPath = "transcript_path"
-        case terminalApp = "terminal_app"
+        case message
+        case remoteHost = "remote_host"
+        case remoteUser = "remote_user"
+        case remoteTmuxTarget = "remote_tmux_target"
+        case lastToolName = "last_tool_name"
+        // Conversation info from JSONL (sent by hook for remote sessions)
+        case conversationSummary = "conversation_summary"
+        case conversationFirstMessage = "conversation_first_message"
+        case conversationLatestMessage = "conversation_latest_message"
+        case conversationLastTool = "conversation_last_tool"
+        // Additional keys for compatibility with hook script format
+        case hookEventName = "hook_event_name"
+        case sessionPhase = "session_phase"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessionId = try container.decodeIfPresent(String.self, forKey: .sessionId) ?? ""
+        cwd = try container.decodeIfPresent(String.self, forKey: .cwd) ?? ""
+        // Handle both 'event' and 'hook_event_name' for event type
+        event = try container.decodeIfPresent(String.self, forKey: .event)
+            ?? container.decodeIfPresent(String.self, forKey: .hookEventName)
+            ?? ""
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
+        pid = try container.decodeIfPresent(Int.self, forKey: .pid)
+        tty = try container.decodeIfPresent(String.self, forKey: .tty)
+        tool = try container.decodeIfPresent(String.self, forKey: .tool)
+        toolInput = try container.decodeIfPresent([String: AnyCodable].self, forKey: .toolInput)
+        toolUseId = try container.decodeIfPresent(String.self, forKey: .toolUseId)
+        notificationType = try container.decodeIfPresent(String.self, forKey: .notificationType)
+        message = try container.decodeIfPresent(String.self, forKey: .message)
+        remoteHost = try container.decodeIfPresent(String.self, forKey: .remoteHost)
+        remoteUser = try container.decodeIfPresent(String.self, forKey: .remoteUser)
+        remoteTmuxTarget = try container.decodeIfPresent(String.self, forKey: .remoteTmuxTarget)
+        lastToolName = try container.decodeIfPresent(String.self, forKey: .lastToolName)
+        conversationSummary = try container.decodeIfPresent(String.self, forKey: .conversationSummary)
+        conversationFirstMessage = try container.decodeIfPresent(String.self, forKey: .conversationFirstMessage)
+        conversationLatestMessage = try container.decodeIfPresent(String.self, forKey: .conversationLatestMessage)
+        conversationLastTool = try container.decodeIfPresent(String.self, forKey: .conversationLastTool)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(sessionId, forKey: .sessionId)
+        try container.encode(cwd, forKey: .cwd)
+        try container.encode(event, forKey: .event)
+        try container.encode(status, forKey: .status)
+        try container.encodeIfPresent(pid, forKey: .pid)
+        try container.encodeIfPresent(tty, forKey: .tty)
+        try container.encodeIfPresent(tool, forKey: .tool)
+        try container.encodeIfPresent(toolInput, forKey: .toolInput)
+        try container.encodeIfPresent(toolUseId, forKey: .toolUseId)
+        try container.encodeIfPresent(notificationType, forKey: .notificationType)
+        try container.encodeIfPresent(message, forKey: .message)
+        try container.encodeIfPresent(remoteHost, forKey: .remoteHost)
+        try container.encodeIfPresent(remoteUser, forKey: .remoteUser)
+        try container.encodeIfPresent(remoteTmuxTarget, forKey: .remoteTmuxTarget)
+        try container.encodeIfPresent(lastToolName, forKey: .lastToolName)
+        try container.encodeIfPresent(conversationSummary, forKey: .conversationSummary)
+        try container.encodeIfPresent(conversationFirstMessage, forKey: .conversationFirstMessage)
+        try container.encodeIfPresent(conversationLatestMessage, forKey: .conversationLatestMessage)
+        try container.encodeIfPresent(conversationLastTool, forKey: .conversationLastTool)
     }
 
     /// Create a copy with updated toolUseId
-    init(sessionId: String, cwd: String, event: String, status: String, pid: Int?, tty: String?, tool: String?, toolInput: [String: AnyCodable]?, toolUseId: String?, notificationType: String?, message: String?, source: String? = nil, transcriptPath: String? = nil, terminalApp: String? = nil) {
+    init(sessionId: String, cwd: String, event: String, status: String, pid: Int?, tty: String?, tool: String?, toolInput: [String: AnyCodable]?, toolUseId: String?, notificationType: String?, message: String?, remoteHost: String? = nil, remoteUser: String? = nil, remoteTmuxTarget: String? = nil, lastToolName: String? = nil, conversationSummary: String? = nil, conversationFirstMessage: String? = nil, conversationLatestMessage: String? = nil, conversationLastTool: String? = nil) {
         self.sessionId = sessionId
         self.cwd = cwd
         self.event = event
@@ -56,9 +121,14 @@ struct HookEvent: Codable, Sendable {
         self.toolUseId = toolUseId
         self.notificationType = notificationType
         self.message = message
-        self.source = source
-        self.transcriptPath = transcriptPath
-        self.terminalApp = terminalApp
+        self.remoteHost = remoteHost
+        self.remoteUser = remoteUser
+        self.remoteTmuxTarget = remoteTmuxTarget
+        self.lastToolName = lastToolName
+        self.conversationSummary = conversationSummary
+        self.conversationFirstMessage = conversationFirstMessage
+        self.conversationLatestMessage = conversationLatestMessage
+        self.conversationLastTool = conversationLastTool
     }
 
     var sessionPhase: SessionPhase {
@@ -114,6 +184,30 @@ typealias HookEventHandler = @Sendable (HookEvent) -> Void
 /// Callback for permission response failures (socket died)
 typealias PermissionFailureHandler = @Sendable (_ sessionId: String, _ toolUseId: String) -> Void
 
+/// Incoming message from SSH relay (has extra SSH metadata)
+struct RelayMessage: Codable, Sendable {
+    let type: String  // "auth", "auth_ok", "hook_event", "ping", "pong", "command", "command_result", "disconnect"
+    let psk: String?
+    let version: String?
+    let event: HookEvent?
+    let remoteHost: String?
+    let remoteUser: String?
+    let remoteTmuxTarget: String?
+    let action: String?
+    let target: String?
+    let text: String?
+    let result: [String: AnyCodable]?
+    let id: String?
+
+    enum CodingKeys: String, CodingKey {
+        case type, psk, version, event, remoteHost, remoteUser, remoteTmuxTarget
+        case action, target, text, result, id
+    }
+}
+
+/// Callback for relay commands (e.g., send-text to remote tmux)
+typealias RelayCommandHandler = @Sendable (String, String, String) -> Void
+
 /// Unix domain socket server that receives events from Claude Code hooks
 /// Uses GCD DispatchSource for non-blocking I/O
 class HookSocketServer {
@@ -124,6 +218,7 @@ class HookSocketServer {
     private var acceptSource: DispatchSourceRead?
     private var eventHandler: HookEventHandler?
     private var permissionFailureHandler: PermissionFailureHandler?
+    private var relayCommandHandler: RelayCommandHandler?
     private let queue = DispatchQueue(label: "com.codeisland.socket", qos: .userInitiated)
 
     /// Pending permission requests indexed by toolUseId
@@ -136,12 +231,44 @@ class HookSocketServer {
     private var toolUseIdCache: [String: [String]] = [:]
     private let cacheLock = NSLock()
 
+    /// TCP server socket for SSH relay connections
+    private var tcpServerSocket: Int32 = -1
+    private var tcpAcceptSource: DispatchSourceRead?
+
+    /// Active TCP connections keyed by host identifier
+    private var tcpConnections: [String: Int32] = [:]
+    private let tcpConnectionsLock = NSLock()
+
+    /// PSK for relay authentication
+    private var relayPSK: String?
+
     private init() {}
 
     /// Start the socket server
     func start(onEvent: @escaping HookEventHandler, onPermissionFailure: PermissionFailureHandler? = nil) {
         queue.async { [weak self] in
             self?.startServer(onEvent: onEvent, onPermissionFailure: onPermissionFailure)
+        }
+    }
+
+    /// Start the TCP relay server on the given port
+    func startTCPServer(port: Int, psk: String, onEvent: @escaping HookEventHandler, onCommand: @escaping RelayCommandHandler) {
+        queue.async { [weak self] in
+            self?.startTCPAcceptLoop(port: port, psk: psk, onEvent: onEvent, onCommand: onCommand)
+        }
+    }
+
+    /// Stop the TCP relay server
+    func stopTCPServer() {
+        queue.async { [weak self] in
+            self?.stopTCP()
+        }
+    }
+
+    /// Send a command to a relay connection identified by host:user
+    func sendRelayCommand(hostId: String, command: RelayCommand) {
+        queue.async { [weak self] in
+            self?.sendCommandToRelay(hostId: hostId, command: command)
         }
     }
 
@@ -209,11 +336,353 @@ class HookSocketServer {
         acceptSource?.resume()
     }
 
+    // MARK: - TCP Relay Server
+
+    private func startTCPAcceptLoop(port: Int, psk: String, onEvent: @escaping HookEventHandler, onCommand: @escaping RelayCommandHandler) {
+        guard tcpServerSocket < 0 else { return }
+
+        relayPSK = psk
+        relayCommandHandler = onCommand
+        eventHandler = onEvent
+
+        tcpServerSocket = socket(AF_INET, SOCK_STREAM, 0)
+        guard tcpServerSocket >= 0 else {
+            logger.error("Failed to create TCP socket: \(errno)")
+            return
+        }
+
+        var nosigpipe: Int32 = 1
+        setsockopt(tcpServerSocket, SOL_SOCKET, SO_NOSIGPIPE, &nosigpipe, socklen_t(MemoryLayout<Int32>.size))
+
+        var reuseAddr: Int32 = 1
+        setsockopt(tcpServerSocket, SOL_SOCKET, SO_REUSEADDR, &reuseAddr, socklen_t(MemoryLayout<Int32>.size))
+
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = in_port_t(port).bigEndian
+        // Bind to all interfaces for LAN access, or use SSH tunnel for remote
+        addr.sin_addr.s_addr = inet_addr("0.0.0.0")
+
+        let bindResult = withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
+                bind(tcpServerSocket, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+
+        guard bindResult == 0 else {
+            let bindErrno = errno
+            logger.error("Failed to bind TCP socket on port \(port): errno=\(bindErrno) \(String(cString: strerror(bindErrno)), privacy: .public)")
+            close(tcpServerSocket)
+            tcpServerSocket = -1
+            return
+        }
+
+        guard listen(tcpServerSocket, 10) == 0 else {
+            logger.error("Failed to listen on TCP port \(port): \(errno)")
+            close(tcpServerSocket)
+            tcpServerSocket = -1
+            return
+        }
+
+        logger.info("TCP relay server listening on port \(port)")
+
+        tcpAcceptSource = DispatchSource.makeReadSource(fileDescriptor: tcpServerSocket, queue: queue)
+        tcpAcceptSource?.setEventHandler { [weak self] in
+            self?.acceptTCPConnection()
+        }
+        tcpAcceptSource?.setCancelHandler { [weak self] in
+            if let fd = self?.tcpServerSocket, fd >= 0 {
+                close(fd)
+                self?.tcpServerSocket = -1
+            }
+        }
+        tcpAcceptSource?.resume()
+    }
+
+    private func stopTCP() {
+        tcpAcceptSource?.cancel()
+        tcpAcceptSource = nil
+
+        tcpConnectionsLock.lock()
+        for (_, fd) in tcpConnections {
+            close(fd)
+        }
+        tcpConnections.removeAll()
+        tcpConnectionsLock.unlock()
+
+        relayPSK = nil
+        relayCommandHandler = nil
+    }
+
+    private func acceptTCPConnection() {
+        var addrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let clientSocket = accept(tcpServerSocket, nil, &addrLen)
+        guard clientSocket >= 0 else {
+            logger.warning("TCP accept failed: errno=\(errno)")
+            return
+        }
+
+        var nosigpipe: Int32 = 1
+        setsockopt(clientSocket, SOL_SOCKET, SO_NOSIGPIPE, &nosigpipe, socklen_t(MemoryLayout<Int32>.size))
+
+        logger.debug("TCP client accepted on fd \(clientSocket)")
+
+        // Hand off auth handshake to a task so the serial queue isn't blocked by slow clients
+        Task {
+            await performTCPAuth(clientSocket: clientSocket)
+        }
+    }
+
+    private func performTCPAuth(clientSocket: Int32) async {
+        // Set a 10-second receive deadline for auth handshake
+        var timeout = timeval(tv_sec: 10, tv_usec: 0)
+        setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+
+        // Read first message for PSK auth (4-byte length header)
+        var lenBuf = [UInt8](repeating: 0, count: 4)
+        let lenRead = lenBuf.withUnsafeMutableBytes { bytes in
+            read(clientSocket, bytes.baseAddress, bytes.count)
+        }
+        guard lenRead == 4 else {
+            let readErrno = errno
+            logger.warning("TCP auth failed: length header read=\(lenRead), errno=\(readErrno)")
+            close(clientSocket)
+            return
+        }
+        let msgLen = Int(lenBuf[0]) << 24 | Int(lenBuf[1]) << 16 | Int(lenBuf[2]) << 8 | Int(lenBuf[3])
+
+        guard msgLen > 0 && msgLen < 1_000_000 else {
+            logger.warning("TCP auth failed: invalid message length \(msgLen)")
+            close(clientSocket)
+            return
+        }
+
+        var msgData = Data()
+        while msgData.count < msgLen {
+            var buf = [UInt8](repeating: 0, count: msgLen - msgData.count)
+            let r = buf.withUnsafeMutableBytes { bytes in
+                read(clientSocket, bytes.baseAddress, bytes.count)
+            }
+            if r <= 0 {
+                let readErrno = errno
+                logger.warning("TCP auth failed: payload read=\(r), received=\(msgData.count)/\(msgLen), errno=\(readErrno)")
+                close(clientSocket)
+                return
+            }
+            msgData.append(contentsOf: buf[0..<r])
+        }
+        guard let relayMsg = try? JSONDecoder().decode(RelayMessage.self, from: msgData) else {
+            logger.warning("TCP auth failed: invalid JSON payload (\(msgData.count) bytes)")
+            close(clientSocket)
+            return
+        }
+
+        // Verify PSK and require remoteHost/remoteUser to avoid hostId collisions
+        let pskToVerify = relayPSK
+        logger.info("TCP auth: type=\(relayMsg.type), presented_psk=\((relayMsg.psk ?? "nil").prefix(8)), expected_psk=\((pskToVerify ?? "nil").prefix(8)), remoteHost=\(relayMsg.remoteHost ?? "nil"), remoteUser=\(relayMsg.remoteUser ?? "nil")")
+        guard relayMsg.type == "auth",
+              let presentedPSK = relayMsg.psk,
+              presentedPSK == pskToVerify,
+              relayMsg.remoteHost != nil,
+              relayMsg.remoteUser != nil else {
+            logger.warning("Relay auth failed - invalid PSK or missing remote identity")
+            close(clientSocket)
+            return
+        }
+
+        // Send auth_ok with proper 4-byte length framing (matching recv_msg expectation)
+        let authOk = RelayMessage(type: "auth_ok", psk: nil, version: nil, event: nil, remoteHost: nil, remoteUser: nil, remoteTmuxTarget: nil, action: nil, target: nil, text: nil, result: nil, id: nil)
+        if let authData = try? JSONEncoder().encode(authOk) {
+            var framed = Data()
+            var len = UInt32(authData.count).bigEndian
+            framed.append(Data(bytes: &len, count: 4))
+            framed.append(authData)
+            let writeResult = write(clientSocket, (framed as NSData).bytes, framed.count)
+            if writeResult <= 0 {
+                logger.warning("TCP auth failed: auth_ok write=\(writeResult), errno=\(errno)")
+                close(clientSocket)
+                return
+            }
+        }
+
+        // Register connection using socket fd to ensure uniqueness (prevents collisions when same user reconnects)
+        let hostId = "\(relayMsg.remoteHost ?? "unknown"):\(relayMsg.remoteUser ?? "unknown"):\(clientSocket)"
+        tcpConnectionsLock.lock()
+        tcpConnections[hostId] = clientSocket
+        tcpConnectionsLock.unlock()
+
+        logger.info("Relay connected: \(hostId, privacy: .public)")
+
+        // Handle this connection
+        handleTCPClient(clientSocket: clientSocket, hostId: hostId)
+    }
+
+    private func handleTCPClient(clientSocket: Int32, hostId: String) {
+        let flags = fcntl(clientSocket, F_GETFL)
+        _ = fcntl(clientSocket, F_SETFL, flags | O_NONBLOCK)
+
+        var allData = Data()
+
+        while true {
+            var buf = [UInt8](repeating: 0, count: 65536)
+            let bytesRead = read(clientSocket, &buf, buf.count)
+
+            if bytesRead > 0 {
+                allData.append(contentsOf: buf[0..<bytesRead])
+            } else if bytesRead == 0 {
+                // EOF - connection closed
+                break
+            } else if errno == EAGAIN || errno == EWOULDBLOCK {
+                // No data available yet, wait a bit before next read
+                Thread.sleep(forTimeInterval: 0.05)
+                continue
+            } else {
+                // Error
+                break
+            }
+
+            // Process complete messages (4-byte length prefix + body)
+            while allData.count >= 4 {
+                let msgLen = Int(allData[0]) << 24 | Int(allData[1]) << 16 | Int(allData[2]) << 8 | Int(allData[3])
+                guard msgLen > 0 && msgLen < 1_000_000 else {
+                    // Invalid length - consume 1 byte and continue
+                    allData.removeFirst()
+                    continue
+                }
+                guard allData.count >= 4 + msgLen else { break }
+
+                let msgData = allData.subdata(in: 4..<(4 + msgLen))
+                allData.removeSubrange(0..<(4 + msgLen))
+
+                processTCPMessage(data: msgData, hostId: hostId, clientSocket: clientSocket)
+            }
+        }
+
+        // Cleanup
+        tcpConnectionsLock.lock()
+        tcpConnections.removeValue(forKey: hostId)
+        tcpConnectionsLock.unlock()
+        close(clientSocket)
+        logger.info("Relay disconnected: \(hostId, privacy: .public)")
+    }
+
+    private func processTCPMessage(data: Data, hostId: String, clientSocket: Int32) {
+        guard let relayMsg = try? JSONDecoder().decode(RelayMessage.self, from: data) else {
+            logger.warning("Failed to decode RelayMessage from \(data.count) bytes")
+            return
+        }
+
+        logger.info("processTCPMessage: type=\(relayMsg.type), event=\(relayMsg.event?.event ?? "nil"), sessionId=\(relayMsg.event?.sessionId.prefix(8) ?? "nil")")
+
+        switch relayMsg.type {
+        case "hook_event":
+            if let event = relayMsg.event {
+                logger.info("Forwarding hook_event: sid=\(event.sessionId.prefix(8)), event=\(event.event), status=\(event.status)")
+                // Mirror Unix socket path: cache toolUseId on PreToolUse, clean cache on SessionEnd
+                if event.event == "PreToolUse" {
+                    cacheToolUseId(event: event)
+                }
+                if event.event == "SessionEnd" {
+                    cleanupCache(sessionId: event.sessionId)
+                }
+                // Track pending permission for approval requests so app-side approve/deny can route back
+                if event.status == "waiting_for_approval" {
+                    let toolUseId: String
+                    if let eventToolUseId = event.toolUseId {
+                        toolUseId = eventToolUseId
+                    } else if let cachedToolUseId = popCachedToolUseId(event: event) {
+                        toolUseId = cachedToolUseId
+                    } else {
+                        logger.warning("Permission request missing tool_use_id for \(event.sessionId.prefix(8), privacy: .public) - no cache hit")
+                        eventHandler?(event)
+                        return
+                    }
+
+                    let pending = PendingPermission(
+                        sessionId: event.sessionId,
+                        toolUseId: toolUseId,
+                        clientSocket: clientSocket,
+                        event: event,
+                        receivedAt: Date()
+                    )
+                    permissionsLock.lock()
+                    pendingPermissions[toolUseId] = pending
+                    permissionsLock.unlock()
+
+                    logger.debug("TCP relay: tracking pending permission for \(event.sessionId.prefix(8), privacy: .public) tool:\(toolUseId.prefix(12), privacy: .public), socket=\(clientSocket)")
+                    // Don't close clientSocket - keep it open for permission response
+                    eventHandler?(event)
+                } else {
+                    eventHandler?(event)
+                }
+            } else {
+                logger.warning("hook_event type but no event payload")
+            }
+
+        case "ping":
+            let pong = RelayMessage(type: "pong", psk: nil, version: nil, event: nil, remoteHost: nil, remoteUser: nil, remoteTmuxTarget: nil, action: nil, target: nil, text: nil, result: nil, id: nil)
+            if let pongData = try? JSONEncoder().encode(pong) {
+                var len = UInt32(pongData.count).bigEndian
+                var frame = Data(bytes: &len, count: 4)
+                frame.append(pongData)
+                _ = write(clientSocket, (frame as NSData).bytes, frame.count)
+            }
+
+        case "command_result":
+            // Command result from relay (future use)
+            break
+
+        default:
+            break
+        }
+    }
+
+    private func sendCommandToRelay(hostId: String, command: RelayCommand) {
+        tcpConnectionsLock.lock()
+        guard let fd = tcpConnections[hostId] else {
+            tcpConnectionsLock.unlock()
+            logger.warning("No relay connection for \(hostId, privacy: .public)")
+            return
+        }
+        tcpConnectionsLock.unlock()
+
+        let relayMsg = RelayMessage(
+            type: "command",
+            psk: nil,
+            version: nil,
+            event: nil,
+            remoteHost: nil,
+            remoteUser: nil,
+            remoteTmuxTarget: nil,
+            action: command.action,
+            target: command.target,
+            text: command.text,
+            result: nil,
+            id: command.id
+        )
+
+        guard let msgData = try? JSONEncoder().encode(relayMsg) else { return }
+
+        var len = UInt32(msgData.count).bigEndian
+        var frame = Data(bytes: &len, count: 4)
+        frame.append(msgData)
+
+        var sent = 0
+        while sent < frame.count {
+            let result = write(fd, (frame as NSData).bytes + sent, frame.count - sent)
+            if result <= 0 { break }
+            sent += result
+        }
+    }
+
     /// Stop the socket server
     func stop() {
         acceptSource?.cancel()
         acceptSource = nil
         unlink(Self.socketPath)
+
+        // Also stop TCP relay server
+        stopTCP()
 
         permissionsLock.lock()
         for (_, pending) in pendingPermissions {
@@ -416,8 +885,18 @@ class HookSocketServer {
 
         let data = allData
 
+        if let relayMsg = try? JSONDecoder().decode(RelayMessage.self, from: data),
+           relayMsg.type == "ping" {
+            let pong = RelayMessage(type: "pong", psk: nil, version: nil, event: nil, remoteHost: nil, remoteUser: nil, remoteTmuxTarget: nil, action: nil, target: nil, text: nil, result: nil, id: nil)
+            if let pongData = try? JSONEncoder().encode(pong) {
+                _ = write(clientSocket, (pongData as NSData).bytes, pongData.count)
+            }
+            close(clientSocket)
+            return
+        }
+
         guard let event = try? JSONDecoder().decode(HookEvent.self, from: data) else {
-            logger.warning("Failed to parse event: \(String(data: data, encoding: .utf8) ?? "?", privacy: .public)")
+            logger.warning("Failed to parse Unix socket payload: \(String(data: data, encoding: .utf8) ?? "?", privacy: .public)")
             close(clientSocket)
             return
         }
@@ -456,7 +935,7 @@ class HookSocketServer {
                 tty: event.tty,
                 tool: event.tool,
                 toolInput: event.toolInput,
-                toolUseId: toolUseId,
+                toolUseId: toolUseId,  // Use resolved toolUseId
                 notificationType: event.notificationType,
                 message: event.message
             )
@@ -562,6 +1041,16 @@ class HookSocketServer {
             permissionFailureHandler?(sessionId, pending.toolUseId)
         }
     }
+}
+
+// MARK: - Relay Command
+
+struct RelayCommand: Codable {
+    let type: String
+    let action: String
+    let target: String
+    let text: String?
+    let id: String?
 }
 
 // MARK: - AnyCodable for tool_input

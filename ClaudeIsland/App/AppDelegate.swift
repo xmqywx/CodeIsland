@@ -1,9 +1,11 @@
 import AppKit
 import SwiftUI
 import UserNotifications
+import os.log
 
 class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     private var windowManager: WindowManager?
+    private static let logger = Logger(subsystem: "com.codeisland", category: "AppDelegate")
     private var screenObserver: ScreenObserver?
 
     static var shared: AppDelegate?
@@ -19,6 +21,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Self.logger.info("Application did finish launching")
         if !ensureSingleInstance() {
             NSApplication.shared.terminate(nil)
             return
@@ -61,13 +64,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         Task { @MainActor in
             AnalyticsCollector.shared.start()
         }
+
+        // Start session monitoring (includes TCP relay for remote hooks)
+        sessionMonitor.startMonitoring()
     }
+
+    private let sessionMonitor = ClaudeSessionMonitor()
 
     private func handleScreenChange() {
         _ = windowManager?.setupNotchWindow()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        sessionMonitor.stopMonitoring()
         screenObserver = nil
     }
 

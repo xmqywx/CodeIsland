@@ -81,6 +81,9 @@ enum SessionEvent: Sendable {
     /// Remove all ended sessions from state
     case clearEndedSessions
 
+    /// User removed a session from the UI
+    case removeSession(sessionId: String)
+
     /// Request to load initial history from file
     case loadHistory(sessionId: String, cwd: String)
 
@@ -262,6 +265,8 @@ extension SessionEvent: CustomStringConvertible {
             return "agentFileUpdated(session: \(sessionId.prefix(8)), task: \(taskToolId.prefix(12)), tools: \(tools.count))"
         case .clearEndedSessions:
             return "clearEndedSessions"
+        case .removeSession(let sessionId):
+            return "removeSession(session: \(sessionId.prefix(8)))"
         }
     }
 }
