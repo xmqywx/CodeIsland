@@ -128,16 +128,22 @@ enum AppSettings {
     /// being a whack-a-mole" — instead of wiring every new network
     /// consumer individually, we set it once on the process and inherit.
     ///
-    /// Idempotent: empty value → `unsetenv`, non-empty → `setenv`. Safe
-    /// to call on every `UserDefaults.didChangeNotification`.
+    /// Idempotent: non-empty value → `setenv`. Empty value is a **no-op** —
+    /// we do NOT `unsetenv`, because the process may have inherited proxy
+    /// env vars from `launchctl setenv` (set by the user outside CodeIsland)
+    /// and clearing them would silently break users who depend on that
+    /// global fallback. The trade-off: if the user **had** a proxy set here
+    /// and then clears the field, subprocesses spawned in this session
+    /// still see the previously-set value until the app is restarted. The
+    /// rate-limit bar (`URLSession`-based) picks up the change immediately
+    /// because it re-reads the setting per request.
+    ///
+    /// Safe to call on every `UserDefaults.didChangeNotification`.
     static func applyProxyToProcessEnvironment() {
         let raw = anthropicProxyURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return }
         let keys = ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY",
                     "https_proxy", "http_proxy", "all_proxy"]
-        if raw.isEmpty {
-            for k in keys { unsetenv(k) }
-        } else {
-            for k in keys { setenv(k, raw, 1) }
-        }
+        for k in keys { setenv(k, raw, 1) }
     }
 }
