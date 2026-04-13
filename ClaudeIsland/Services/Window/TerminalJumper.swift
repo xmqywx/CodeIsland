@@ -74,11 +74,22 @@ actor TerminalJumper {
         }
 
         // 3. If terminal app unknown OR all specific strategies failed,
-        //    try common AppleScript terminals in order
-        if await jumpViaCmux(cwd: cwd, sessionId: session.sessionId, tty: session.tty) { return true }
-        if await jumpViaGhostty(cwd: cwd) { return true }
-        if await jumpViaiTerm2(cwd: cwd, pid: pid, tty: session.tty) { return true }
-        if await jumpViaTerminalApp(cwd: cwd, pid: pid) { return true }
+        //    probe common terminals — but ONLY the ones that are actually running.
+        //    Previously this block ran `jumpViaCmux` unconditionally even when
+        //    the user was on iTerm, which could dispatch an AppleEvent to a
+        //    missing cmux and hang/fail silently.
+        if isRunning(bundleId: "com.cmuxterm.app") {
+            if await jumpViaCmux(cwd: cwd, sessionId: session.sessionId, tty: session.tty) { return true }
+        }
+        if isRunning(bundleId: "com.mitchellh.ghostty") {
+            if await jumpViaGhostty(cwd: cwd) { return true }
+        }
+        if isRunning(bundleId: "com.googlecode.iterm2") {
+            if await jumpViaiTerm2(cwd: cwd, pid: pid, tty: session.tty) { return true }
+        }
+        if isRunning(bundleId: "com.apple.Terminal") {
+            if await jumpViaTerminalApp(cwd: cwd, pid: pid) { return true }
+        }
 
         // 4. Generic fallback: activate terminal app by bundle ID
         if !terminalApp.isEmpty {
@@ -90,6 +101,13 @@ actor TerminalJumper {
             if activateRunningApp(bundleId: bundleId) { return true }
         }
         return false
+    }
+
+    /// Cheap sync probe: is an app with this bundle id currently running?
+    /// Used to avoid dispatching AppleEvents to missing targets (which can
+    /// hang osascript or trigger spurious TCC prompts).
+    private func isRunning(bundleId: String) -> Bool {
+        !NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).isEmpty
     }
 
     // MARK: - iTerm2 (AppleScript — rich API)

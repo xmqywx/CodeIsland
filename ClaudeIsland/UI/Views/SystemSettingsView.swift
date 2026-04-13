@@ -126,6 +126,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case behavior
     case plugins
     case codelight       // Pair iPhone + Launch Presets merged
+    case cmuxConnection  // diagnostics for phone→terminal relay
+    case logs            // live DebugLogger tail
     case advanced
     case about
 
@@ -133,27 +135,31 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
-        case .general:       return "gearshape.fill"
-        case .appearance:    return "paintbrush.fill"
-        case .notifications: return "bell.badge.fill"
-        case .behavior:      return "slider.horizontal.3"
-        case .plugins:       return "puzzlepiece.extension.fill"
-        case .codelight:     return "iphone.radiowaves.left.and.right"
-        case .advanced:      return "wrench.and.screwdriver.fill"
-        case .about:         return "info.circle.fill"
+        case .general:        return "gearshape.fill"
+        case .appearance:     return "paintbrush.fill"
+        case .notifications:  return "bell.badge.fill"
+        case .behavior:       return "slider.horizontal.3"
+        case .plugins:        return "puzzlepiece.extension.fill"
+        case .codelight:      return "iphone.radiowaves.left.and.right"
+        case .cmuxConnection: return "terminal.fill"
+        case .logs:           return "doc.text.magnifyingglass"
+        case .advanced:       return "wrench.and.screwdriver.fill"
+        case .about:          return "info.circle.fill"
         }
     }
 
     var label: String {
         switch self {
-        case .general:       return L10n.tabGeneral
-        case .appearance:    return L10n.tabAppearance
-        case .notifications: return L10n.tabNotifications
-        case .behavior:      return L10n.tabBehavior
-        case .plugins:       return "Plugins"
-        case .codelight:     return L10n.tabCodeLight
-        case .advanced:      return L10n.tabAdvanced
-        case .about:         return L10n.tabAbout
+        case .general:        return L10n.tabGeneral
+        case .appearance:     return L10n.tabAppearance
+        case .notifications:  return L10n.tabNotifications
+        case .behavior:       return L10n.tabBehavior
+        case .plugins:        return "Plugins"
+        case .codelight:      return L10n.tabCodeLight
+        case .cmuxConnection: return L10n.tabCmuxConnection
+        case .logs:           return L10n.tabLogs
+        case .advanced:       return L10n.tabAdvanced
+        case .about:          return L10n.tabAbout
         }
     }
 }
@@ -295,14 +301,16 @@ private struct SystemSettingsContentView: View {
                     .padding(.top, 18)
 
                 switch tab {
-                case .general:       GeneralTab()
-                case .appearance:    AppearanceTab()
-                case .notifications: NotificationsTab()
-                case .behavior:      BehaviorTab()
-                case .plugins:       NativePluginStoreView()
-                case .codelight:     CodeLightTab()
-                case .advanced:      AdvancedTab()
-                case .about:         AboutTab()
+                case .general:        GeneralTab()
+                case .appearance:     AppearanceTab()
+                case .notifications:  NotificationsTab()
+                case .behavior:       BehaviorTab()
+                case .plugins:        NativePluginStoreView()
+                case .codelight:      CodeLightTab()
+                case .cmuxConnection: CmuxConnectionTab()
+                case .logs:           LogsTab()
+                case .advanced:       AdvancedTab()
+                case .about:          AboutTab()
                 }
             }
             .padding(.horizontal, 22)
@@ -755,5 +763,402 @@ private struct AboutTab: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(Theme.sidebarFill)
         )
+    }
+}
+
+// MARK: - cmux Connection tab
+
+/// Phone → terminal relay diagnostics. Replaces the invisible failure modes
+/// that used to leave users with "phone says sent, cmux shows nothing".
+private struct CmuxConnectionTab: View {
+    @State private var probe: TerminalWriter.ConnectionProbe?
+    @State private var isRefreshing = false
+    @State private var testState: TestState = .idle
+    @State private var testDetail: String = ""
+    @State private var automationState: AutomationState = .idle
+    @State private var automationDetail: String = ""
+
+    enum TestState { case idle, sending, done }
+    enum AutomationState { case idle, requesting, done }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(L10n.cmuxTabHeader)
+                .font(.system(size: 11))
+                .foregroundColor(Theme.subtle)
+
+            SettingsCard {
+                statusRow(
+                    icon: "terminal.fill",
+                    title: L10n.cmuxBinaryRow,
+                    ok: probe?.cmuxBinaryInstalled ?? false,
+                    detail: (probe?.cmuxBinaryInstalled ?? false) ? L10n.cmuxBinaryFound : L10n.cmuxBinaryMissing
+                )
+                statusRow(
+                    icon: "accessibility",
+                    title: L10n.accessibilityRowTitle,
+                    ok: probe?.accessibilityGranted ?? false,
+                    detail: (probe?.accessibilityGranted ?? false) ? L10n.accessibilityGranted : L10n.accessibilityDenied
+                )
+                statusRow(
+                    icon: "gearshape.2",
+                    title: L10n.automationRowTitle,
+                    ok: probe?.automationGranted,
+                    detail: probe?.automationDetail ?? L10n.automationUnknown
+                )
+                statusRow(
+                    icon: "person.crop.rectangle.stack",
+                    title: L10n.runningClaudeCount,
+                    ok: (probe?.claudeSessionCount ?? 0) > 0,
+                    detail: "\(probe?.claudeSessionCount ?? 0)"
+                )
+            }
+
+            SettingsCard {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        Button {
+                            Task { await runTest() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if testState == .sending {
+                                    ProgressView().scaleEffect(0.5).frame(width: 12, height: 12)
+                                } else {
+                                    Image(systemName: "paperplane.fill").font(.system(size: 11))
+                                }
+                                Text(testState == .sending ? L10n.testSending : L10n.testSendButton)
+                                    .font(.system(size: 12, weight: .semibold))
+                            }
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Theme.sidebarFill))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(testState == .sending)
+
+                        Button {
+                            Task { await refresh() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.clockwise").font(.system(size: 11))
+                                Text(L10n.refreshStatus).font(.system(size: 12, weight: .medium))
+                            }
+                            .foregroundColor(.white.opacity(0.85))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.06)))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isRefreshing)
+                    }
+
+                    if testState == .done, !testDetail.isEmpty {
+                        Text(testDetail)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.75))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+
+            SettingsCard {
+                VStack(spacing: 8) {
+                    permissionButton(label: L10n.openAccessibilitySettings, urlString: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+                    permissionButton(label: L10n.openAutomationSettings, urlString: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")
+
+                    // Proactive Automation-prompt trigger. macOS won't let the
+                    // user add an app to the Automation whitelist manually;
+                    // tapping this dispatches a no-op `activate` AppleEvent
+                    // to the first running terminal, surfacing the TCC dialog.
+                    Button {
+                        Task { await requestAutomation() }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if automationState == .requesting {
+                                ProgressView().scaleEffect(0.5).frame(width: 11, height: 11)
+                            } else {
+                                Image(systemName: "hand.raised.fill").font(.system(size: 11))
+                            }
+                            Text(L10n.requestAutomationButton).font(.system(size: 12, weight: .medium))
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.system(size: 9)).opacity(0.4)
+                        }
+                        .foregroundColor(.white.opacity(0.85))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.04)))
+                        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(automationState == .requesting)
+
+                    if automationState == .done, !automationDetail.isEmpty {
+                        Text(automationDetail)
+                            .font(.system(size: 10))
+                            .foregroundColor(.white.opacity(0.6))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .task { await refresh() }
+    }
+
+    private func requestAutomation() async {
+        automationState = .requesting
+        automationDetail = ""
+        let (_, detail) = await TerminalWriter.shared.requestAutomationPermission()
+        automationDetail = detail
+        automationState = .done
+    }
+
+    @ViewBuilder
+    private func statusRow(icon: String, title: String, ok: Bool?, detail: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 12))
+                .foregroundColor(.white.opacity(0.7))
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.9))
+                Text(detail)
+                    .font(.system(size: 10))
+                    .foregroundColor(.white.opacity(0.55))
+            }
+            Spacer()
+            Circle()
+                .fill(dotColor(ok))
+                .frame(width: 8, height: 8)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func dotColor(_ ok: Bool?) -> Color {
+        switch ok {
+        case .some(true): return Color(red: 0.3, green: 0.85, blue: 0.35)
+        case .some(false): return Color(red: 0.95, green: 0.35, blue: 0.35)
+        case .none: return Color.white.opacity(0.25)
+        }
+    }
+
+    private func permissionButton(label: String, urlString: String) -> some View {
+        Button {
+            if let url = URL(string: urlString) {
+                NSWorkspace.shared.open(url)
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.up.right.square").font(.system(size: 11))
+                Text(label).font(.system(size: 12, weight: .medium))
+                Spacer()
+                Image(systemName: "chevron.right").font(.system(size: 9)).opacity(0.4)
+            }
+            .foregroundColor(.white.opacity(0.85))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.04)))
+            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func refresh() async {
+        isRefreshing = true
+        let p = await TerminalWriter.shared.probeConnection()
+        self.probe = p
+        isRefreshing = false
+    }
+
+    private func runTest() async {
+        testState = .sending
+        testDetail = ""
+        let (ok, detail) = await TerminalWriter.shared.testSendDiagnostic()
+        testDetail = detail
+        testState = .done
+        // Also refresh the status rows while we're at it.
+        let p = await TerminalWriter.shared.probeConnection()
+        self.probe = p
+        _ = ok
+    }
+}
+
+// MARK: - Logs tab
+
+/// Live tail of ~/.claude/.codeisland.log with issue-submission affordances.
+/// Exists to turn "CodeIsland is broken, help" into something users can
+/// self-serve into a GitHub issue without scrolling for log files.
+private struct LogsTab: View {
+    @StateObject private var streamer = LogStreamer.shared
+    @State private var justCopied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(L10n.logsHeader)
+                .font(.system(size: 11))
+                .foregroundColor(Theme.subtle)
+
+            HStack(spacing: 8) {
+                toolbarButton(icon: "doc.on.doc", label: justCopied ? L10n.logsCopied : L10n.logsCopyAll) {
+                    let snapshot = streamer.currentSnapshot()
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(snapshot, forType: .string)
+                    justCopied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        justCopied = false
+                    }
+                }
+                toolbarButton(icon: "folder", label: L10n.logsOpenFile) {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: streamer.logFilePath)])
+                }
+                toolbarButton(icon: "exclamationmark.bubble", label: L10n.logsSubmitIssue) {
+                    openIssue()
+                }
+            }
+
+            SettingsCard {
+                logView
+            }
+        }
+        .task {
+            streamer.startIfNeeded()
+        }
+        .onDisappear {
+            streamer.stopIfUnused()
+        }
+    }
+
+    @ViewBuilder
+    private var logView: some View {
+        if streamer.lines.isEmpty {
+            Text(L10n.logsEmpty)
+                .font(.system(size: 11))
+                .foregroundColor(.white.opacity(0.4))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 24)
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(streamer.lines.enumerated()), id: \.offset) { idx, line in
+                            Text(line)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(colorFor(line: line))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .id(idx)
+                        }
+                        Color.clear.frame(height: 1).id("bottom")
+                    }
+                    .padding(.vertical, 4)
+                }
+                .frame(height: 320)
+                .onChange(of: streamer.lines.count) { _, _ in
+                    withAnimation(.linear(duration: 0.1)) {
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                    }
+                }
+                .onAppear {
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                }
+            }
+        }
+    }
+
+    private func colorFor(line: String) -> Color {
+        let lower = line.lowercased()
+        if lower.contains("error") || lower.contains("failed") {
+            return Color(red: 1.0, green: 0.55, blue: 0.55)
+        }
+        if lower.contains("warning") || lower.contains("timeout") {
+            return Color(red: 1.0, green: 0.85, blue: 0.4)
+        }
+        return Color.white.opacity(0.8)
+    }
+
+    private func toolbarButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 11))
+                Text(label).font(.system(size: 12, weight: .medium))
+            }
+            .foregroundColor(.white.opacity(0.85))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.06)))
+            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func openIssue() {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        let os = Foundation.ProcessInfo.processInfo.operatingSystemVersionString
+
+        // 1. Put the FULL log on the clipboard. GitHub's issue-new endpoint
+        //    caps prefilled URLs around 8KB — 200 lines URL-encoded blows
+        //    past that and the page breaks. Clipboard has no such limit,
+        //    so users can paste arbitrarily large logs into the textarea.
+        let fullSnapshot = streamer.currentSnapshot()
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(fullSnapshot, forType: .string)
+
+        // 2. Put a short tail inline in the URL as a preview. A normal line is
+        //    ~100 chars, so 20 lines × 3x URL-encoding ≈ 6KB — fits under the
+        //    8KB limit. But a single stack trace line can be 500+ chars and
+        //    blow the budget with even 10 lines. So we measure the actual
+        //    encoded URL length and progressively shrink the tail until it
+        //    fits under `maxURLBytes`, falling back to an empty preview if
+        //    even 1 line is too fat. The clipboard copy above guarantees the
+        //    user can always paste the full log regardless.
+        let maxURLBytes = 6000  // conservative — GitHub's hard limit is ~8KB
+        var previewLineCount = 20
+        var finalURL: URL?
+        while previewLineCount >= 0 {
+            let tail = previewLineCount > 0
+                ? streamer.lines.suffix(previewLineCount).joined(separator: "\n")
+                : "(omitted — see clipboard)"
+
+            let body = """
+            **Describe the issue**
+            <!-- What happened? What did you expect? -->
+
+            **Environment**
+            - CodeIsland: \(version) (build \(build))
+            - macOS: \(os)
+
+            **Recent logs (preview — last \(previewLineCount) lines)**
+            ```
+            \(tail)
+            ```
+
+            **Full log**
+            > \(L10n.logsIssueClipboardNotice)
+
+            ```
+            <!-- paste here -->
+            ```
+            """
+
+            var comps = URLComponents(string: "https://github.com/MioMioOS/MioIsland/issues/new")!
+            comps.queryItems = [
+                URLQueryItem(name: "title", value: "[Bug] "),
+                URLQueryItem(name: "body", value: body)
+            ]
+            if let candidate = comps.url, candidate.absoluteString.count <= maxURLBytes {
+                finalURL = candidate
+                break
+            }
+            // Halve and retry (20 → 10 → 5 → 2 → 1 → 0).
+            if previewLineCount == 0 { break }
+            previewLineCount = previewLineCount > 1 ? previewLineCount / 2 : 0
+        }
+
+        if let url = finalURL {
+            NSWorkspace.shared.open(url)
+        }
     }
 }

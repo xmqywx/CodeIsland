@@ -8,18 +8,250 @@
 
 import Foundation
 import AppKit
+import ApplicationServices
+import Darwin
 import os.log
+
+/// File-scope helper: spawn a subprocess on a background queue, read its stdout,
+/// and force-kill it if it exceeds the given timeout. Returns `(stdout, success)`.
+///
+/// This exists because `Process().waitUntilExit()` + `readDataToEndOfFile()` are
+/// synchronous and will freeze the main thread if the child hangs (cmux CLI
+/// unresponsive, osascript denied by macOS TCC, etc.). Every subprocess launch
+/// in TerminalWriter MUST go through this helper — do not add new raw
+/// `try process.run()` sites.
+///
+/// `terminationGrace` is the SIGTERM→SIGKILL gap; we escalate if the child
+/// doesn't exit on its own after SIGTERM.
+private func runShellWithTimeout(
+    _ executable: String,
+    _ arguments: [String],
+    timeout: TimeInterval = 5.0,
+    terminationGrace: TimeInterval = 0.25
+) async -> (output: String?, success: Bool) {
+    await withCheckedContinuation { (continuation: CheckedContinuation<(String?, Bool), Never>) in
+        DispatchQueue.global(qos: .userInitiated).async {
+            let p = Process()
+            let pipe = Pipe()
+            p.executableURL = URL(fileURLWithPath: executable)
+            p.arguments = arguments
+            p.standardOutput = pipe
+            p.standardError = FileHandle.nullDevice
+
+            do {
+                try p.run()
+            } catch {
+                DebugLogger.log("Shell", "launch failed: \(executable) \(arguments.joined(separator: " ")) — \(error.localizedDescription)")
+                continuation.resume(returning: (nil, false))
+                return
+            }
+
+            // Watchdog: SIGTERM at `timeout`, SIGKILL at `timeout + grace` if still alive.
+            let watchdog = DispatchWorkItem { [p] in
+                guard p.isRunning else { return }
+                DebugLogger.log("Shell", "timeout \(timeout)s — SIGTERM \(executable) \(arguments.first ?? "")")
+                p.terminate()
+                Thread.sleep(forTimeInterval: terminationGrace)
+                if p.isRunning {
+                    DebugLogger.log("Shell", "still alive after SIGTERM — SIGKILL \(executable)")
+                    kill(p.processIdentifier, SIGKILL)
+                }
+            }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: watchdog)
+
+            // Reads block until the pipe is closed — happens when the child exits
+            // (normally or via watchdog termination above).
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            watchdog.cancel()
+
+            let output = String(data: data, encoding: .utf8)
+            let success = p.terminationStatus == 0
+            continuation.resume(returning: (output, success))
+        }
+    }
+}
 
 /// Sends text input to a Claude Code terminal session.
 @MainActor
 final class TerminalWriter {
 
-    static let logger = Logger(subsystem: "com.codeisland", category: "TerminalWriter")
+    nonisolated static let logger = Logger(subsystem: "com.codeisland", category: "TerminalWriter")
     static let shared = TerminalWriter()
 
-    private let cmuxPath = "/Applications/cmux.app/Contents/Resources/bin/cmux"
-
     private init() {}
+
+    // MARK: - Diagnostics (for Settings → cmux Connection tab)
+
+    /// A snapshot of everything the cmux-relay path needs to work. Consumed by
+    /// the cmux connection diagnostic UI in System Settings.
+    struct ConnectionProbe: Sendable {
+        let cmuxBinaryInstalled: Bool
+        let accessibilityGranted: Bool
+        let claudeSessionCount: Int
+        /// Automation (AppleEvents) permission for the first running terminal.
+        /// nil = no supported terminal running, or not yet prompted.
+        let automationGranted: Bool?
+        /// Which terminal was probed + human-readable status. Surfaced in the
+        /// status row so users can tell "cmux granted" from "cmux not
+        /// prompted" at a glance.
+        let automationDetail: String
+        /// First detected cmux-hosted target (workspaceId, surfaceId?), used by
+        /// the "Test send" button. nil if no cmux-hosted Claude is running.
+        let testTarget: (workspaceId: String, surfaceId: String?)?
+    }
+
+    /// Run all the health checks a user would need to diagnose "why isn't my
+    /// phone message landing in cmux". Non-invasive — does not write to any
+    /// terminal.
+    func probeConnection() async -> ConnectionProbe {
+        let cmuxOk = FileManager.default.isExecutableFile(atPath: self.cmuxPath)
+        let axOk = AXIsProcessTrusted()
+        let procs = await listClaudeProcesses()
+        var firstTarget: (workspaceId: String, surfaceId: String?)?
+        for proc in procs {
+            if let t = await readCmuxIDs(forPid: proc.pid) {
+                firstTarget = t
+                break
+            }
+        }
+        let (autoOk, autoDetail) = probeAutomationPermission()
+        return ConnectionProbe(
+            cmuxBinaryInstalled: cmuxOk,
+            accessibilityGranted: axOk,
+            claudeSessionCount: procs.count,
+            automationGranted: autoOk,
+            automationDetail: autoDetail,
+            testTarget: firstTarget
+        )
+    }
+
+    /// Non-invasive probe for Automation (AppleEvents) TCC permission. Uses
+    /// `AEDeterminePermissionToAutomateTarget` with `askUserIfNeeded: false`
+    /// so it never triggers the TCC dialog — the dedicated "Request
+    /// Automation permission" button is responsible for that.
+    ///
+    /// We check cmux first (the primary relay target), then fall back to
+    /// other supported terminals. Returns `(granted, detail)`:
+    /// - `(true, "cmux ✓")`   — granted
+    /// - `(false, "cmux — err=-1743")` — explicitly denied
+    /// - `(nil, "cmux — not yet prompted")` — consent would be required
+    /// - `(nil, "...")` — no supported terminal running
+    private func probeAutomationPermission() -> (granted: Bool?, detail: String) {
+        let candidates: [(bundleId: String, label: String)] = [
+            ("com.cmuxterm.app", "cmux"),
+            ("com.googlecode.iterm2", "iTerm"),
+            ("com.mitchellh.ghostty", "Ghostty"),
+            ("com.apple.Terminal", "Terminal")
+        ]
+        for (bundleId, label) in candidates {
+            guard !NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).isEmpty else { continue }
+
+            var addr = AEAddressDesc()
+            let bundleData = Data(bundleId.utf8)
+            let createStatus: OSErr = bundleData.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) -> OSErr in
+                guard let baseAddress = bytes.baseAddress else { return OSErr(-1) }
+                return AECreateDesc(DescType(typeApplicationBundleID),
+                                    baseAddress,
+                                    bytes.count,
+                                    &addr)
+            }
+            guard createStatus == OSErr(noErr) else {
+                return (nil, "\(label) — AECreateDesc err=\(createStatus)")
+            }
+            defer { AEDisposeDesc(&addr) }
+
+            let status = AEDeterminePermissionToAutomateTarget(
+                &addr,
+                AEEventClass(typeWildCard),
+                AEEventID(typeWildCard),
+                false
+            )
+            switch status {
+            case noErr:
+                return (true, "\(label) ✓")
+            case OSStatus(errAEEventNotPermitted):
+                return (false, "\(label) — denied (err=-1743)")
+            case -1744: // errAEEventWouldRequireUserConsent
+                return (nil, "\(label) — not yet prompted")
+            default:
+                return (nil, "\(label) — status=\(status)")
+            }
+        }
+        return (nil, L10n.automationUnknown)
+    }
+
+    /// Proactively trigger the macOS Automation TCC prompt by dispatching a
+    /// harmless `activate` AppleEvent to the first running supported terminal.
+    /// Without this, the user never sees the permission dialog until they
+    /// actually try to send a message — and by then the relay has already
+    /// silently failed. Called from the Settings → cmux Connection tab.
+    ///
+    /// Uses `NSAppleScript` (in-process) rather than spawning `osascript` as
+    /// a subprocess. Subprocess dispatch can confuse TCC attribution on some
+    /// macOS builds — the event is blamed on osascript (which already has
+    /// Automation entries from unrelated apps) instead of the parent, and no
+    /// prompt ever fires. In-process NSAppleScript runs inside Code Island's
+    /// own code signature, so TCC reliably attributes to `com.codeisland.app`
+    /// and shows the dialog on first use.
+    ///
+    /// Returns `(ok, detail)` — on failure, `detail` contains the raw
+    /// NSAppleScriptErrorNumber so we can diagnose TCC edge cases from the
+    /// UI without opening Console.
+    func requestAutomationPermission() async -> (ok: Bool, detail: String) {
+        // Probe order matches TerminalJumper — cmux first since it's the
+        // primary relay target.
+        let candidates: [(bundleId: String, label: String)] = [
+            ("com.cmuxterm.app", "cmux"),
+            ("com.googlecode.iterm2", "iTerm"),
+            ("com.mitchellh.ghostty", "Ghostty"),
+            ("com.apple.Terminal", "Terminal")
+        ]
+        for (bundleId, label) in candidates {
+            guard !NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).isEmpty else { continue }
+
+            let source = "tell application id \"\(bundleId)\" to activate"
+            let script = NSAppleScript(source: source)
+            var errorInfo: NSDictionary?
+            _ = script?.executeAndReturnError(&errorInfo)
+
+            if errorInfo == nil {
+                return (true, "\(L10n.requestAutomationPrompted) (\(label))")
+            }
+            // Surface the raw error so we can tell "prompt shown, user denied"
+            // (err -1743) from "script parse failure" from "target not
+            // running" — they all need different fixes.
+            let errNum = (errorInfo?["NSAppleScriptErrorNumber"] as? Int) ?? 0
+            let errMsg = (errorInfo?["NSAppleScriptErrorMessage"] as? String) ?? "?"
+            return (false, "\(L10n.requestAutomationDenied) (\(label) · err=\(errNum) · \(errMsg))")
+        }
+        return (false, L10n.requestAutomationNoTerminal)
+    }
+
+    /// Send a fixed diagnostic probe line to the first detected cmux target.
+    /// Returns a human-readable result string that the UI can show directly.
+    func testSendDiagnostic() async -> (ok: Bool, detail: String) {
+        let probe = await probeConnection()
+        guard probe.cmuxBinaryInstalled else {
+            return (false, L10n.cmuxBinaryMissing)
+        }
+        guard let (wsId, surfId) = probe.testTarget else {
+            return (false, L10n.testSendNoTarget)
+        }
+        // Deliberately empty-ish payload that won't spam the user's terminal:
+        // a single `#` comment line which most shells treat as a no-op.
+        var args = ["send", "--workspace", wsId]
+        if let surfId { args += ["--surface", surfId] }
+        args += ["--", "# CodeIsland probe\r"]
+        let result = await cmuxRun(args)
+        if result != nil {
+            return (true, "\(L10n.testSendSuccess) — ws=\(wsId.prefix(8)) surf=\(surfId?.prefix(8).description ?? "-")")
+        } else {
+            return (false, L10n.testSendFailed)
+        }
+    }
+
+    // MARK: - Relay entry points
 
     /// Send a text message to the terminal running the given session.
     func sendText(_ text: String, to session: SessionState) async -> Bool {
@@ -34,7 +266,7 @@ final class TerminalWriter {
 
         // Try AppleScript for known terminals
         if termApp.contains("iterm") {
-            return sendViaAppleScript(text, script: """
+            return await sendViaAppleScript(text, script: """
                 tell application "iTerm2"
                     tell current session of current tab of current window
                         write text "\(text.replacingOccurrences(of: "\"", with: "\\\""))"
@@ -45,7 +277,7 @@ final class TerminalWriter {
 
         if termApp.contains("ghostty") {
             // Ghostty: use keystroke via System Events
-            return sendViaAppleScript(text, script: """
+            return await sendViaAppleScript(text, script: """
                 tell application "Ghostty" to activate
                 delay 0.3
                 tell application "System Events"
@@ -56,7 +288,7 @@ final class TerminalWriter {
         }
 
         if termApp.contains("terminal") && !termApp.contains("wez") {
-            return sendViaAppleScript(text, script: """
+            return await sendViaAppleScript(text, script: """
                 tell application "Terminal"
                     do script "\(text.replacingOccurrences(of: "\"", with: "\\\""))" in selected tab of front window
                 end tell
@@ -88,12 +320,12 @@ final class TerminalWriter {
     /// Send a single control key (escape, ctrl+c, enter, …) to the Claude terminal.
     /// Returns true if the cmux surface was found and send-key invoked.
     func sendControlKey(_ key: String, claudeUuid: String, cwd: String? = nil, livePid: Int? = nil) async -> Bool {
-        guard let (wsId, surfId) = findCmuxTarget(claudeUuid: claudeUuid, cwd: cwd, livePid: livePid),
+        guard let (wsId, surfId) = await findCmuxTarget(claudeUuid: claudeUuid, cwd: cwd, livePid: livePid),
               let surfId else {
             Self.logger.warning("sendControlKey: no cmux target for uuid=\(claudeUuid.prefix(8))")
             return false
         }
-        let result = cmuxRun(["send-key", "--workspace", wsId, "--surface", surfId, "--", key])
+        let result = await cmuxRun(["send-key", "--workspace", wsId, "--surface", surfId, "--", key])
         Self.logger.info("Sent key '\(key)' to cmux (ws=\(wsId.prefix(8)) surf=\(surfId.prefix(8))) result=\(result != nil)")
         return result != nil
     }
@@ -102,12 +334,12 @@ final class TerminalWriter {
     /// Used by the phone's "read screen" button so the user can check terminal state
     /// without injecting any input. Returns nil if the surface can't be located.
     func readScreen(claudeUuid: String, cwd: String? = nil, livePid: Int? = nil, lines: Int = 500) async -> String? {
-        guard let (wsId, surfId) = findCmuxTarget(claudeUuid: claudeUuid, cwd: cwd, livePid: livePid),
+        guard let (wsId, surfId) = await findCmuxTarget(claudeUuid: claudeUuid, cwd: cwd, livePid: livePid),
               let surfId else {
             Self.logger.warning("readScreen: no cmux target for uuid=\(claudeUuid.prefix(8))")
             return nil
         }
-        let raw = cmuxRun(["read-screen", "--workspace", wsId, "--surface", surfId, "--scrollback", "--lines", "\(lines)"]) ?? ""
+        let raw = await cmuxRun(["read-screen", "--workspace", wsId, "--surface", surfId, "--scrollback", "--lines", "\(lines)"]) ?? ""
         let split = raw.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)
         let cleaned = cleanupOutputLines(split)
         return cleaned.isEmpty ? nil : cleaned
@@ -120,24 +352,24 @@ final class TerminalWriter {
     /// Returns nil if we can't locate the cmux surface for this Claude session or
     /// capture fails.
     func sendSlashCommandAndCaptureOutput(_ command: String, claudeUuid: String, cwd: String? = nil, livePid: Int? = nil, settleMs: UInt64 = 1500) async -> String? {
-        guard let (wsId, surfId) = findCmuxTarget(claudeUuid: claudeUuid, cwd: cwd, livePid: livePid),
+        guard let (wsId, surfId) = await findCmuxTarget(claudeUuid: claudeUuid, cwd: cwd, livePid: livePid),
               let surfId else {
             Self.logger.warning("captureOutput: no cmux target for uuid=\(claudeUuid.prefix(8))")
             return nil
         }
 
         // Pre-snapshot
-        let before = cmuxRun(["read-screen", "--workspace", wsId, "--surface", surfId, "--scrollback", "--lines", "500"]) ?? ""
+        let before = await cmuxRun(["read-screen", "--workspace", wsId, "--surface", surfId, "--scrollback", "--lines", "500"]) ?? ""
 
         // Send the command
         let escaped = command.replacingOccurrences(of: "\n", with: "\r")
-        _ = cmuxRun(["send", "--workspace", wsId, "--surface", surfId, "--", "\(escaped)\r"])
+        _ = await cmuxRun(["send", "--workspace", wsId, "--surface", surfId, "--", "\(escaped)\r"])
 
         // Wait for the CLI to render its response
         try? await Task.sleep(nanoseconds: settleMs * 1_000_000)
 
         // Post-snapshot
-        let after = cmuxRun(["read-screen", "--workspace", wsId, "--surface", surfId, "--scrollback", "--lines", "500"]) ?? ""
+        let after = await cmuxRun(["read-screen", "--workspace", wsId, "--surface", surfId, "--scrollback", "--lines", "500"]) ?? ""
 
         let diff = diffTerminalSnapshots(before: before, after: after)
         return diff.isEmpty ? nil : diff
@@ -201,7 +433,7 @@ final class TerminalWriter {
     /// then send any accompanying text. Uses NSPasteboard + CGEvent Cmd+V via cmux focus.
     /// Returns true if at least the focusing + paste attempts succeeded.
     func sendImagesAndText(images: [Data], text: String, claudeUuid: String, cwd: String? = nil, livePid: Int? = nil) async -> Bool {
-        guard let (wsId, surfId) = findCmuxTarget(claudeUuid: claudeUuid, cwd: cwd, livePid: livePid) else {
+        guard let (wsId, surfId) = await findCmuxTarget(claudeUuid: claudeUuid, cwd: cwd, livePid: livePid) else {
             Self.logger.warning("sendImagesAndText: no cmux target for uuid=\(claudeUuid.prefix(8))")
             return false
         }
@@ -217,11 +449,11 @@ final class TerminalWriter {
 
         // 1. Switch cmux internally to the target surface. `focus-panel` is the
         //    correct command — cmux calls surfaces "panels" in CLI-speak.
-        _ = cmuxRun(["focus-panel", "--panel", surfId, "--workspace", wsId])
+        _ = await cmuxRun(["focus-panel", "--panel", surfId, "--workspace", wsId])
 
         // 2. Bring cmux.app to the foreground. AppleScript is more reliable than
         //    NSRunningApplication here (the latter sometimes fails to locate cmux).
-        _ = runOsascript(#"tell application id "com.cmuxterm.app" to activate"#)
+        _ = await runOsascript(#"tell application id "com.cmuxterm.app" to activate"#)
 
         // Wait up to 1s for cmux to actually become frontmost.
         var frontOk = false
@@ -243,7 +475,7 @@ final class TerminalWriter {
             try? await Task.sleep(nanoseconds: 120_000_000)
             // Use AppleScript keystroke as the primary path — it's more reliable than
             // raw CGEvent in many window server configurations. Fall back to CGEvent.
-            if !postCmdVViaAppleScript() {
+            if !(await postCmdVViaAppleScript()) {
                 Self.logger.info("AppleScript paste failed, falling back to CGEvent")
                 postCmdV()
             }
@@ -260,7 +492,7 @@ final class TerminalWriter {
         let trailing = text.isEmpty
             ? "\r"
             : "\(text.replacingOccurrences(of: "\n", with: "\r"))\r"
-        _ = cmuxRun(["send", "--workspace", wsId, "--surface", surfId, "--", trailing])
+        _ = await cmuxRun(["send", "--workspace", wsId, "--surface", surfId, "--", trailing])
 
         Self.logger.info("Pasted \(images.count) image(s) + text via cmux (ws=\(wsId.prefix(8)) surf=\(surfId.prefix(8)))")
         return true
@@ -303,24 +535,18 @@ final class TerminalWriter {
     }
 
     /// Simulate Cmd+V via AppleScript System Events. Returns true on success.
-    nonisolated private func postCmdVViaAppleScript() -> Bool {
-        return runOsascript(#"tell application "System Events" to keystroke "v" using {command down}"#)
+    nonisolated private func postCmdVViaAppleScript() async -> Bool {
+        return await runOsascript(#"tell application "System Events" to keystroke "v" using {command down}"#)
     }
 
+    /// Run an AppleScript snippet via osascript with a hard timeout. Silently
+    /// returns `false` on TCC denial, hang, or non-zero exit — callers are
+    /// expected to surface permission problems via the Settings UI, not this
+    /// return value alone.
     @discardableResult
-    nonisolated private func runOsascript(_ script: String) -> Bool {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        p.arguments = ["-e", script]
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError = FileHandle.nullDevice
-        do {
-            try p.run()
-            p.waitUntilExit()
-            return p.terminationStatus == 0
-        } catch {
-            return false
-        }
+    nonisolated private func runOsascript(_ script: String) async -> Bool {
+        let (_, ok) = await runShellWithTimeout("/usr/bin/osascript", ["-e", script], timeout: 5.0)
+        return ok
     }
 
     private func sendViaCmuxDirect(_ text: String, claudeUuid: String, cwd: String?, livePid: Int?) async -> Bool {
@@ -334,7 +560,7 @@ final class TerminalWriter {
         //   2. argv match by --session-id (works only for fresh, non-resumed
         //      sessions whose argv id == JSONL filename).
         //   3. cwd-scoped scan (heuristic — picks highest pid when multiple).
-        guard let (wsId, surfId) = findCmuxTarget(claudeUuid: claudeUuid, cwd: cwd, livePid: livePid) else {
+        guard let (wsId, surfId) = await findCmuxTarget(claudeUuid: claudeUuid, cwd: cwd, livePid: livePid) else {
             Self.logger.warning("No cmux-hosted claude process for uuid=\(claudeUuid.prefix(8)) cwd=\(cwd ?? "nil") pid=\(livePid?.description ?? "nil") — session is orphaned, in a non-cmux terminal, or on another machine")
             return false
         }
@@ -344,7 +570,7 @@ final class TerminalWriter {
         args += ["--workspace", wsId]
         if let surfId { args += ["--surface", surfId] }
         args += ["--", "\(escaped)\r"]
-        guard cmuxRun(args) != nil else {
+        guard await cmuxRun(args) != nil else {
             Self.logger.error("cmux send failed for workspace=\(wsId)")
             return false
         }
@@ -355,27 +581,27 @@ final class TerminalWriter {
     /// Top-level resolver. Tries the most reliable identity first (live PID
     /// from CodeIsland's hook tracking), then falls back to argv match, then
     /// to cwd-scoped scanning.
-    nonisolated private func findCmuxTarget(claudeUuid: String, cwd: String?, livePid: Int?) -> (workspaceId: String, surfaceId: String?)? {
+    nonisolated private func findCmuxTarget(claudeUuid: String, cwd: String?, livePid: Int?) async -> (workspaceId: String, surfaceId: String?)? {
         // Pass 0: hook-recorded live pid. Most reliable — `os.getppid()` from
         // the python hook script gives us the exact Claude process.
-        if let livePid, let target = readCmuxIDs(forPid: livePid) {
+        if let livePid, let target = await readCmuxIDs(forPid: livePid) {
             return target
         }
         // Falls back to argv-then-cwd inside the existing helper.
-        return findCmuxTargetForClaudeSession(uuid: claudeUuid, cwd: cwd)
+        return await findCmuxTargetForClaudeSession(uuid: claudeUuid, cwd: cwd)
     }
 
     /// Look up a cmux workspace+surface for the live Claude process backing the
     /// given session UUID. Tries argv match first (works when JSONL id == live
     /// id), falls back to cwd-scoped scan when the conversation was resumed
     /// (rotating live id) or when CodeIsland is reporting the JSONL filename.
-    nonisolated private func findCmuxTargetForClaudeSession(uuid: String, cwd: String?) -> (workspaceId: String, surfaceId: String?)? {
-        let candidates = listClaudeProcesses()
+    nonisolated private func findCmuxTargetForClaudeSession(uuid: String, cwd: String?) async -> (workspaceId: String, surfaceId: String?)? {
+        let candidates = await listClaudeProcesses()
         if candidates.isEmpty { return nil }
 
         // Pass 1: exact argv match by --session-id
         if let exact = candidates.first(where: { $0.sessionId == uuid }),
-           let target = readCmuxIDs(forPid: exact.pid) {
+           let target = await readCmuxIDs(forPid: exact.pid) {
             return target
         }
 
@@ -383,24 +609,24 @@ final class TerminalWriter {
         // the session's cwd AND who have CMUX env vars (i.e. are inside a cmux
         // pane — no point routing to an iTerm window we can't drive).
         guard let cwd, !cwd.isEmpty else {
-            Self.logger.info("findCmuxTarget: argv miss for uuid=\(uuid.prefix(8)) and no cwd to fall back on")
+            DebugLogger.log("TerminalWriter", "findCmuxTarget: argv miss for uuid=\(uuid.prefix(8)) and no cwd to fall back on")
             return nil
         }
 
-        let cwdMatched = candidates
-            .filter { $0.cwd == cwd }
-            .compactMap { proc -> (pid: Int, target: (workspaceId: String, surfaceId: String?))? in
-                guard let target = readCmuxIDs(forPid: proc.pid) else { return nil }
-                return (proc.pid, target)
+        var cwdMatched: [(pid: Int, target: (workspaceId: String, surfaceId: String?))] = []
+        for proc in candidates where proc.cwd == cwd {
+            if let target = await readCmuxIDs(forPid: proc.pid) {
+                cwdMatched.append((proc.pid, target))
             }
+        }
 
         guard !cwdMatched.isEmpty else {
-            Self.logger.info("findCmuxTarget: no cwd-matching cmux-hosted claude in \(cwd)")
+            DebugLogger.log("TerminalWriter", "findCmuxTarget: no cwd-matching cmux-hosted claude in \(cwd)")
             return nil
         }
 
         if cwdMatched.count > 1 {
-            Self.logger.warning("findCmuxTarget: \(cwdMatched.count) candidates in cwd=\(cwd) — picking highest pid as heuristic")
+            DebugLogger.log("TerminalWriter", "findCmuxTarget: \(cwdMatched.count) candidates in cwd=\(cwd) — picking highest pid as heuristic")
         }
         return cwdMatched.max { $0.pid < $1.pid }?.target
     }
@@ -414,17 +640,9 @@ final class TerminalWriter {
 
     /// Enumerate every `claude --session-id …` process. cwd resolved per pid via
     /// `lsof -p <pid> -d cwd -Fn` (lightweight: 1 line per pid).
-    nonisolated private func listClaudeProcesses() -> [ClaudeProcessInfo] {
-        let ps = Process()
-        let out = Pipe()
-        ps.executableURL = URL(fileURLWithPath: "/bin/ps")
-        ps.arguments = ["-Ax", "-o", "pid=,command="]
-        ps.standardOutput = out
-        ps.standardError = FileHandle.nullDevice
-        do { try ps.run() } catch { return [] }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        ps.waitUntilExit()
-        guard let text = String(data: data, encoding: .utf8) else { return [] }
+    nonisolated private func listClaudeProcesses() async -> [ClaudeProcessInfo] {
+        let (out, ok) = await runShellWithTimeout("/bin/ps", ["-Ax", "-o", "pid=,command="], timeout: 3.0)
+        guard ok, let text = out else { return [] }
 
         var processes: [ClaudeProcessInfo] = []
         for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
@@ -441,23 +659,15 @@ final class TerminalWriter {
             }()
             let pidStr = trimmed.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true).first.map(String.init) ?? ""
             guard let pid = Int(pidStr) else { continue }
-            let cwd = lsofCwd(pid: pid)
+            let cwd = await lsofCwd(pid: pid)
             processes.append(ClaudeProcessInfo(pid: pid, sessionId: sid, cwd: cwd))
         }
         return processes
     }
 
-    nonisolated private func lsofCwd(pid: Int) -> String? {
-        let p = Process()
-        let pipe = Pipe()
-        p.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        p.arguments = ["-a", "-p", "\(pid)", "-d", "cwd", "-Fn"]
-        p.standardOutput = pipe
-        p.standardError = FileHandle.nullDevice
-        do { try p.run() } catch { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        guard let text = String(data: data, encoding: .utf8) else { return nil }
+    nonisolated private func lsofCwd(pid: Int) async -> String? {
+        let (out, ok) = await runShellWithTimeout("/usr/sbin/lsof", ["-a", "-p", "\(pid)", "-d", "cwd", "-Fn"], timeout: 2.0)
+        guard ok, let text = out else { return nil }
         // Output format (-Fn): "p<pid>\nf<cwd>\nn<path>\n"
         for line in text.split(separator: "\n") where line.hasPrefix("n") {
             return String(line.dropFirst())
@@ -467,17 +677,9 @@ final class TerminalWriter {
 
     /// Read CMUX_WORKSPACE_ID and CMUX_SURFACE_ID env vars from a running pid.
     /// Returns nil if the pid is gone, has no CMUX_WORKSPACE_ID, or ps -E fails.
-    nonisolated private func readCmuxIDs(forPid pid: Int) -> (workspaceId: String, surfaceId: String?)? {
-        let ps = Process()
-        let pipe = Pipe()
-        ps.executableURL = URL(fileURLWithPath: "/bin/ps")
-        ps.arguments = ["-E", "-p", "\(pid)", "-o", "command="]
-        ps.standardOutput = pipe
-        ps.standardError = FileHandle.nullDevice
-        do { try ps.run() } catch { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        ps.waitUntilExit()
-        guard let envLine = String(data: data, encoding: .utf8) else { return nil }
+    nonisolated private func readCmuxIDs(forPid pid: Int) async -> (workspaceId: String, surfaceId: String?)? {
+        let (out, ok) = await runShellWithTimeout("/bin/ps", ["-E", "-p", "\(pid)", "-o", "command="], timeout: 2.0)
+        guard ok, let envLine = out else { return nil }
 
         var wsId: String?
         var surfId: String?
@@ -499,7 +701,7 @@ final class TerminalWriter {
         let sid = String(session.sessionId.prefix(8))
 
         // Find workspace
-        guard let wsOutput = cmuxRun(["list-workspaces"]) else { return false }
+        guard let wsOutput = await cmuxRun(["list-workspaces"]) else { return false }
 
         var targetWsRef: String?
         for wsLine in wsOutput.components(separatedBy: "\n") where !wsLine.isEmpty {
@@ -515,7 +717,7 @@ final class TerminalWriter {
             }
 
             // Fall back to matching inside the surface output.
-            guard let surfOutput = cmuxRun(["list-pane-surfaces", "--workspace", wsRef]) else { continue }
+            guard let surfOutput = await cmuxRun(["list-pane-surfaces", "--workspace", wsRef]) else { continue }
             if surfOutput.contains(sid) || surfOutput.contains(dirName) {
                 targetWsRef = wsRef
                 break
@@ -529,46 +731,40 @@ final class TerminalWriter {
 
         // Send text + Enter
         let escaped = text.replacingOccurrences(of: "\n", with: "\r")
-        _ = cmuxRun(["send", "--workspace", wsRef, "--", "\(escaped)\r"])
+        _ = await cmuxRun(["send", "--workspace", wsRef, "--", "\(escaped)\r"])
         Self.logger.info("Sent message to cmux workspace \(wsRef, privacy: .public)")
         return true
     }
 
-    private func cmuxRun(_ args: [String]) -> String? {
-        let p = Process()
-        let pipe = Pipe()
-        p.executableURL = URL(fileURLWithPath: cmuxPath)
-        p.arguments = args
-        p.standardOutput = pipe
-        p.standardError = FileHandle.nullDevice
-        do {
-            try p.run()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            p.waitUntilExit()
-            guard p.terminationStatus == 0 else { return nil }
-            return String(data: data, encoding: .utf8)
-        } catch { return nil }
+    /// Invoke the cmux CLI with a hard timeout. Returns nil on launch failure,
+    /// non-zero exit, or timeout. All cmux calls MUST go through here — the
+    /// previous raw Process.waitUntilExit could freeze the main thread when
+    /// cmux became unresponsive (main cause of the "CodeIsland 卡死" reports).
+    nonisolated private func cmuxRun(_ args: [String]) async -> String? {
+        let (out, ok) = await runShellWithTimeout(cmuxPath, args, timeout: 5.0)
+        return ok ? out : nil
     }
 
     // MARK: - AppleScript
 
-    private func sendViaAppleScript(_ text: String, script: String) -> Bool {
-        let process = Process()
-        let pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", script]
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-            process.waitUntilExit()
-            let success = process.terminationStatus == 0
-            if success {
-                Self.logger.info("Sent message via AppleScript")
-            }
-            return success
-        } catch {
-            return false
+    /// Run an AppleScript snippet via osascript with a hard timeout. Like
+    /// `cmuxRun`, this used to be a synchronous waitUntilExit which would
+    /// freeze the UI if the user had not granted the Automation permission
+    /// (TCC would block the AppleEvent dispatch indefinitely on some builds).
+    private func sendViaAppleScript(_ text: String, script: String) async -> Bool {
+        let (_, ok) = await runShellWithTimeout("/usr/bin/osascript", ["-e", script], timeout: 5.0)
+        if ok {
+            Self.logger.info("Sent message via AppleScript")
         }
+        return ok
     }
+}
+
+// MARK: - cmuxPath hoist for nonisolated access
+
+/// The nonisolated helpers above need access to `cmuxPath`, which is a
+/// stored instance property. Since cmuxPath is a constant, expose it via
+/// a nonisolated computed accessor.
+extension TerminalWriter {
+    nonisolated fileprivate var cmuxPath: String { "/Applications/cmux.app/Contents/Resources/bin/cmux" }
 }
