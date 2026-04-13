@@ -145,10 +145,28 @@ final class NativePluginManager: ObservableObject {
         Self.log.info("Loaded \(self.loadedPlugins.count) native plugin(s)")
     }
 
+    /// Tracks CFBundleIdentifier values whose code has already been loaded
+    /// into this process. Loading the same Swift module twice from different
+    /// paths triggers objc duplicate-class warnings ("_TtC... is implemented
+    /// in both ...") and can cause spurious casting failures, so we dedupe
+    /// *before* calling `loadAndReturnError()`.
+    private var loadedBundleIdentifiers: Set<String> = []
+
     private func loadPlugin(at url: URL) {
         guard let bundle = Bundle(url: url) else {
             Self.log.warning("Failed to create bundle from \(url.lastPathComponent)")
             return
+        }
+
+        // Dedupe by CFBundleIdentifier before touching the dylib. This is
+        // what keeps the built-in copy at /Applications/.../Resources/Plugins/
+        // from clashing with a newer user-installed copy in ~/.config/.
+        if let bundleId = bundle.bundleIdentifier {
+            if loadedBundleIdentifiers.contains(bundleId) {
+                Self.log.info("Skipping duplicate bundle \(url.lastPathComponent) — \(bundleId) already loaded")
+                return
+            }
+            loadedBundleIdentifiers.insert(bundleId)
         }
 
         do {
