@@ -356,19 +356,14 @@ Subsequent launches work normally with a double-click.
 
 ### HTTP Proxy (for network-restricted regions)
 
-`Settings → General → Anthropic API Proxy` lets you route Code Island's `api.anthropic.com` usage-limit requests through a local HTTP proxy (e.g. `http://127.0.0.1:7890`). This is useful if you run Clash / V2Ray / similar locally and direct connections to Anthropic's servers are unreliable.
+`Settings → General → Anthropic API Proxy` lets you route Code Island's Anthropic API traffic through a local HTTP proxy (e.g. `http://127.0.0.1:7890`). Useful if you run Clash / V2Ray / similar locally and direct connections to Anthropic's servers are unreliable.
 
-**Scope — important:**
-- ✅ Applied to the rate-limit bar in the notch (`RateLimitMonitor` → `api.anthropic.com/api/oauth/usage`)
-- ❌ **Not** applied to the Stats plugin's "Editor's Note" AI daily summary. That feature shells out to the local `claude` CLI as a subprocess, so its network traffic goes through whatever proxy **the CLI itself** is configured with — typically inherited from your shell's `HTTPS_PROXY` env var, `launchctl setenv HTTPS_PROXY ...`, or your system-wide proxy (e.g. Clash TUN mode).
-- ❌ Not applied to CodeLight iPhone sync (our own server, reachable directly).
+**Scope — the setting is applied to:**
+- ✅ The rate-limit bar in the notch (`RateLimitMonitor` → `api.anthropic.com/api/oauth/usage`)
+- ✅ The Stats plugin's "Editor's Note" AI daily summary — the plugin reads the same setting and injects `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` into just the `claude` CLI subprocess it spawns, mirroring what Claude Code itself does via its shell function wrapper. No global env pollution.
+- ❌ **Not** applied to CodeLight iPhone sync (our own server `island.wdao.chat` — reachable directly, routing through a user proxy would add latency and a failure point).
 
-If you want Stats' Editor's Note to go through the same proxy, the simplest approach is to run once at login:
-```bash
-launchctl setenv HTTPS_PROXY http://127.0.0.1:7890
-launchctl setenv HTTP_PROXY  http://127.0.0.1:7890
-```
-This sets the proxy for all GUI-launched apps, so the `claude` CLI subprocess inherits it automatically.
+You do **not** need to run `launchctl setenv HTTPS_PROXY ...` — setting the proxy in Settings is scoped and sufficient. Leave the field empty for direct connections.
 
 <details>
 <summary><b>Build from Source</b></summary>
