@@ -107,6 +107,22 @@ struct ClaudeInstancesView: View {
                     $0.phase != .idle && $0.phase != .ended
                 }.count
             }
+            // Gate the Anthropic usage API poll loop on the Usage Bar
+            // preference. Previously RateLimitMonitor.shared polled the API
+            // unconditionally on init, so users who disabled the bar still
+            // hit api.anthropic.com every 5 minutes. See issue #50.
+            .onAppear {
+                if notchStore.customization.showUsageBar {
+                    rateLimitMonitor.start()
+                }
+            }
+            .onChange(of: notchStore.customization.showUsageBar) { _, newValue in
+                if newValue {
+                    rateLimitMonitor.start()
+                } else {
+                    rateLimitMonitor.stop()
+                }
+            }
         }
     }
 

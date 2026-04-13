@@ -109,13 +109,40 @@ class RateLimitMonitor: ObservableObject {
 
     private var refreshTimer: Timer?
 
-    private init() {
+    /// Whether the poll loop is currently running. Used to make start()
+    /// idempotent so the timer doesn't get recreated on every toggle.
+    private(set) var isRunning = false
+
+    /// Private init — does NOT start polling. Call `start()` explicitly
+    /// when the Usage Bar is enabled. Previously init would unconditionally
+    /// fire a request and kick off a 300s timer, which meant users who
+    /// disabled the Usage Bar in settings were still silently hitting
+    /// api.anthropic.com every 5 minutes (see issue #50).
+    private init() {}
+
+    /// Begin polling the Anthropic usage API on a 5-minute interval and
+    /// fire an immediate refresh. Idempotent — repeated calls are no-ops.
+    func start() {
+        guard !isRunning else { return }
+        isRunning = true
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.refresh()
             }
         }
         Task { await refresh() }
+    }
+
+    /// Stop polling and clear cached state. Called when the user toggles
+    /// the Usage Bar off. Clearing `rateLimitInfo` ensures stale data
+    /// doesn't flash back if the bar is re-enabled before the next poll.
+    func stop() {
+        guard isRunning else { return }
+        isRunning = false
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        hasNotifiedFiveHour = false
+        hasNotifiedSevenDay = false
     }
 
     func refresh() async {
