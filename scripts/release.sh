@@ -146,7 +146,7 @@ cat > "$APPCAST_PATH" << APPCAST_EOF
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
   <channel>
     <title>Mio Island Updates</title>
-    <link>https://miomio.chat/appcast.xml</link>
+    <link>https://miomioos.github.io/MioIsland/appcast.xml</link>
     <description>Mio Island update feed</description>
     <language>en</language>
     <item>
