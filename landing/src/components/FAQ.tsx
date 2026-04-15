@@ -3,7 +3,7 @@ import { Plus, Minus } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import { useI18n } from "../lib/i18n"
 
-const faqKeys = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const
+const faqKeys = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as const
 
 export default function FAQ() {
   const { t } = useI18n()
