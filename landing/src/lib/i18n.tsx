@@ -120,7 +120,7 @@ const translations = {
   "how.step2.desc": { zh: "在 App Store 搜索 Code Light 下载安装。目前公测期间完全免费，所有功能开放。", en: "Search for Code Light on the App Store. Currently in beta — completely free with all features unlocked." },
   "how.step3.title": { zh: "配对连接", en: "Pair & Connect" },
   "how.step3.desc": { zh: "打开 MioIsland 设置 → CodeLight 页面，点击「配对新 iPhone」生成二维码，用 Code Light 扫码即可连接。", en: "Open MioIsland Settings → CodeLight tab, tap 'Pair new iPhone' to generate a QR code, scan it with Code Light to connect." },
-  "how.install.cmd": { zh: "brew install MioMioOS/tap/mioisland", en: "brew install MioMioOS/tap/mioisland" },
+  "how.install.cmd": { zh: "brew install xmqywx/codeisland/codeisland", en: "brew install xmqywx/codeisland/codeisland" },
   "how.install.or": { zh: "或", en: "or" },
   "how.install.dmg": { zh: "下载 DMG 安装包", en: "Download DMG" },
   "how.install.copied": { zh: "已复制!", en: "Copied!" },

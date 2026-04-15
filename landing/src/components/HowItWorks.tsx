@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Download, Copy, Check, Smartphone, Link2, Rocket } from "lucide-react"
 import { useI18n } from "../lib/i18n"
 
-const BREW_CMD = "brew install MioMioOS/tap/mioisland"
+const BREW_CMD = "brew install xmqywx/codeisland/codeisland"
 
 export default function HowItWorks() {
   const { t } = useI18n()
