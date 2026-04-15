@@ -2,19 +2,19 @@
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
   <channel>
     <title>Mio Island Updates</title>
-    <link>https://miomio.chat/appcast.xml</link>
+    <link>https://miomioos.github.io/MioIsland/appcast.xml</link>
     <description>Mio Island update feed</description>
     <language>en</language>
     <item>
-      <title>Mio Island 2.1.1</title>
-      <pubDate>Wed, 15 Apr 2026 18:10:20 +0800</pubDate>
-      <sparkle:version>2.1.1</sparkle:version>
+      <title>Mio Island 2.1.2</title>
+      <pubDate>Wed, 15 Apr 2026 18:15:38 +0800</pubDate>
+      <sparkle:version>2.1.2</sparkle:version>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
       <enclosure
-        url="https://github.com/MioMioOS/MioIsland/releases/download/v2.1.1/MioIsland-v2.1.1.dmg"
-        length="7692288"
+        url="https://github.com/MioMioOS/MioIsland/releases/download/v2.1.2/MioIsland-v2.1.2.dmg"
+        length="7692368"
         type="application/octet-stream"
-        sparkle:edSignature="Wqwq2edDiicliZs34Cgm69PxW4djtcHj6RLE9/hySIaEZCBaztW0bZI4LeAJ5fD5d30gA1HphkIs/VJx6VxKAg=="
+        sparkle:edSignature="6w7jhytZkuj6GZ31Hq+hPRB2LmgW5nFXrn1jopt+JR2Qv7Z6Genku1VQUUE67bPEj9ApCRPpfSu6C2uo/TmPAQ=="
       />
     </item>
   </channel>
