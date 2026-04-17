@@ -123,7 +123,7 @@ MioIsland 现在自带**插件系统**，配套的插件市场托管在 **[miomi
 | **Terminal.app** | 激活 | ✅ |
 | Warp / VS Code / Cursor / Zed / Kitty / WezTerm / Alacritty | 激活 | - |
 
-> 推荐搭配 **[cmux](https://cmux.io)** —— 精确跳转 + 快捷回复 + 智能抑制，多会话管理的最佳拍档。
+> 推荐搭配 **[cmux](https://cmux.com)** —— 精确跳转 + 快捷回复 + 智能抑制，多会话管理的最佳拍档。
 
 ---
 
@@ -195,7 +195,7 @@ xcodebuild -project ClaudeIsland.xcodeproj -scheme ClaudeIsland \
 |------|------|
 | [Code Light](https://github.com/MioMioOS/CodeLight) | iPhone 伴侣应用 |
 | [MioServer](https://github.com/MioMioOS/MioServer) | 自托管中继服务器 |
-| [cmux](https://cmux.io) | 推荐的终端复用器 |
+| [cmux](https://cmux.com) | 推荐的终端复用器 |
 
 ---
 
