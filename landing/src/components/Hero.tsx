@@ -81,7 +81,7 @@ export default function Hero() {
               <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center px-4 sm:px-0" style={{ animation: 'heroEnter 1s ease-out 0.8s both' }}>
                 <StarBorder
                   as="a"
-                  href="https://github.com/MioMioOS/MioIsland/releases/download/v2.0.9/MioIsland-v2.0.9.dmg"
+                  href="https://github.com/MioMioOS/MioIsland/releases/download/v2.1.6/MioIsland-v2.1.6.dmg"
                   color="#34d399"
                   speed="4s"
                   className="!rounded-xl"
