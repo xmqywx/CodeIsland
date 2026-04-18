@@ -132,8 +132,8 @@ class NotchViewModel: ObservableObject {
                 height: min(screenRect.height * 0.78, 780)
             )
         case .instances:
-            let baseHeight: CGFloat = 100
-            let perSession: CGFloat = 65
+            let baseHeight: CGFloat = 120
+            let perSession: CGFloat = 100
             let contentHeight = baseHeight + CGFloat(sessionCount) * perSession
             // ≤4 sessions: fit content + room for buddy; >4: capped unless expanded
             let compactMax: CGFloat = 360
