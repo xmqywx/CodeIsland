@@ -6,16 +6,16 @@
     <description>Mio Island update feed</description>
     <language>en</language>
     <item>
-      <title>Mio Island 2.1.7</title>
-      <pubDate>Sun, 19 Apr 2026 02:20:21 +0800</pubDate>
-      <sparkle:version>24</sparkle:version>
-      <sparkle:shortVersionString>2.1.7</sparkle:shortVersionString>
+      <title>Mio Island 2.1.8</title>
+      <pubDate>Sun, 19 Apr 2026 20:39:57 +0800</pubDate>
+      <sparkle:version>25</sparkle:version>
+      <sparkle:shortVersionString>2.1.8</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
       <enclosure
-        url="https://github.com/MioMioOS/MioIsland/releases/download/v2.1.7/MioIsland-v2.1.7.dmg"
-        length="7817883"
+        url="https://github.com/MioMioOS/MioIsland/releases/download/v2.1.8/MioIsland-v2.1.8.dmg"
+        length="7819348"
         type="application/octet-stream"
-        sparkle:edSignature="S/HYlYrq0jdXDqk7xdUV3cNj5ZAlmmRywtHxio3L8xJlkwMZhaRiKA+2E5gPnyqAqiiIXESNiEnOxV10YzP5Cg=="
+        sparkle:edSignature="HsaDFZxar292F1mBVrJG2xDytPlYYOVsPwrPN63OjQaUzXjv7RVYbPDTDQCTqyjogFDU7b1xOpTghw8ZhiuqCg=="
       />
     </item>
   </channel>
