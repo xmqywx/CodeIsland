@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Smartphone, Download, Zap, ShieldCheck, Terminal, Camera, Lock, Users } from "lucide-react"
+import { Smartphone, Download, Zap, ShieldCheck, Terminal, Camera, Lock, Users, BookOpen, ArrowUpRight } from "lucide-react"
 import { useI18n } from "../lib/i18n"
 import SpotlightCard from "./reactbits/SpotlightCard"
 import TiltedCard from "./reactbits/TiltedCard"
@@ -43,15 +43,18 @@ export default function CodeLight() {
             {t("codelight.desc")}
           </p>
 
-          {/* Free access CTA — prominent, drives to community */}
-          <div className="mt-8 max-w-lg mx-auto rounded-2xl p-5 sm:p-6 border border-green/20 bg-green/[0.05]">
+          {/* Free access CTA — prominent, drives to community.
+              max-w-2xl (was max-w-lg) so the description fits on one line
+              at desktop widths. Second button links out to the Pair iPhone
+              setup tutorial. */}
+          <div className="mt-8 max-w-2xl mx-auto rounded-2xl p-5 sm:p-6 border border-green/20 bg-green/[0.05]">
             <p className="text-base sm:text-lg font-semibold text-text-primary text-center">
               {t("codelight.freeCta")}
             </p>
-            <p className="text-sm text-text-secondary mt-2 text-center leading-relaxed">
+            <p className="text-sm text-text-secondary mt-2 text-center leading-relaxed whitespace-normal sm:whitespace-nowrap">
               {t("codelight.freeDesc")}
             </p>
-            <div className="flex justify-center mt-4">
+            <div className="flex flex-col sm:flex-row justify-center items-center gap-3 mt-4">
               <button
                 onClick={() => setCommunityOpen(true)}
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm bg-green text-deep transition-all duration-300 hover:scale-[1.03] hover:shadow-[0_0_24px_rgba(52,211,153,0.3)] cursor-pointer"
@@ -59,6 +62,14 @@ export default function CodeLight() {
                 <Users size={16} />
                 {t("community.join")}
               </button>
+              <a
+                href={`${base}pair-setup.html`}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm text-green border border-green/40 bg-green/[0.04] transition-all duration-300 hover:bg-green/[0.12] hover:border-green/60 cursor-pointer"
+              >
+                <BookOpen size={16} />
+                {t("codelight.pairSetupCta")}
+                <ArrowUpRight size={14} className="opacity-70" />
+              </a>
             </div>
           </div>
         </div>

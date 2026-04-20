@@ -87,6 +87,7 @@ const translations = {
   "codelight.desc": { zh: "Mac 刘海里那只像素猫，现在也住进了你 iPhone 的灵动岛。会话状态实时同步、远程审批、斜杠命令 —— 离开工位也能掌控全局。", en: "The pixel cat from your Mac's notch now lives in your iPhone's Dynamic Island. Real-time session sync, remote approval, slash commands — stay in control even away from your desk." },
   "codelight.freeCta": { zh: "现在下载，所有功能免费解锁", en: "Download now — all features unlocked for free" },
   "codelight.freeDesc": { zh: "加入社区群获取使用帮助、最新动态，发体验内容截图即可获得持续免费资格。", en: "Join our community for help, updates, and share your experience to get continued free access." },
+  "codelight.pairSetupCta": { zh: "查看配对教程", en: "Pairing Tutorial" },
   "codelight.macs": { zh: "一台 iPhone N 台 Mac", en: "One iPhone, N Macs" },
   "codelight.sessions": { zh: "会话管理", en: "Session Tabs" },
   "codelight.commands": { zh: "/斜杠命令", en: "/Slash Commands" },
