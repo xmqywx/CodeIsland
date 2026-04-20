@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>配对 iPhone · Mio Island 教程</title>
+<meta name="description" content="一步步教你在 Mio Island 上配置 CodeLight 服务器, 用 iPhone 和 Mac 完成配对, 实时接收 Claude Code 状态">
+<link rel="icon" type="image/png" href="/MioIsland/logo.png">
+<style>
+  :root {
+    --bg: #0a0a0b;
+    --bg-card: #141416;
+    --bg-elevated: #1c1c1e;
+    --border: rgba(255,255,255,0.08);
+    --border-strong: rgba(255,255,255,0.14);
+    --text: #f4f4f5;
+    --text-muted: rgba(255,255,255,0.6);
+    --text-dim: rgba(255,255,255,0.42);
+    --lime: #C6FF3A;
+    --lime-dim: #a8dd2a;
+    --red: #ff6b6b;
+    --amber: #ffc542;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro", "PingFang SC", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.7;
+  }
+  a { color: var(--lime); text-decoration: none; }
+  a:hover { color: var(--lime-dim); text-decoration: underline; }
+  code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    background: rgba(255,255,255,0.06);
+    padding: 2px 6px; border-radius: 4px;
+    font-size: 0.92em;
+  }
+  pre {
+    background: rgba(0,0,0,0.35);
+    border: 0.5px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  /* Nav */
+  .nav {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(10,10,11,0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 0.5px solid var(--border);
+    padding: 14px 24px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .nav .logo { width: 22px; height: 22px; border-radius: 5px; }
+  .nav .brand { font-weight: 600; font-size: 14px; }
+  .nav .sep { color: var(--text-dim); margin: 0 2px; }
+  .nav .crumb { color: var(--text-muted); font-size: 13px; }
+  .nav .home {
+    margin-left: auto; font-size: 13px; color: var(--text-muted);
+  }
+  .nav .home:hover { color: var(--lime); text-decoration: none; }
+
+  /* Layout */
+  main { max-width: 760px; margin: 0 auto; padding: 48px 24px 96px; }
+
+  /* Header */
+  .hero {
+    border-bottom: 0.5px solid var(--border);
+    padding-bottom: 32px;
+    margin-bottom: 40px;
+  }
+  .hero .eyebrow {
+    color: var(--lime);
+    font-size: 12px; font-weight: 600;
+    letter-spacing: 1.2px; text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .hero h1 {
+    font-size: 36px; font-weight: 700;
+    letter-spacing: -0.5px;
+    margin: 0 0 12px;
+  }
+  .hero .subtitle {
+    color: var(--text-muted);
+    font-size: 15px; max-width: 560px;
+  }
+  .hero .meta {
+    display: flex; gap: 16px; margin-top: 20px;
+    flex-wrap: wrap;
+  }
+  .hero .meta .pill {
+    background: var(--bg-card);
+    border: 0.5px solid var(--border);
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 12px; color: var(--text-muted);
+  }
+  .hero .meta .pill strong { color: var(--text); font-weight: 600; }
+
+  /* Step */
+  .step {
+    display: grid; grid-template-columns: 48px 1fr; gap: 20px;
+    margin-bottom: 40px;
+  }
+  .step .num {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: var(--bg-card);
+    border: 0.5px solid var(--border-strong);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; color: var(--lime);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 14px;
+  }
+  .step h2 {
+    font-size: 20px; font-weight: 600; margin: 4px 0 10px;
+    letter-spacing: -0.2px;
+  }
+  .step p { margin: 0 0 10px; color: var(--text-muted); }
+  .step p.note {
+    color: var(--text-dim); font-size: 13px; margin-top: -2px;
+  }
+  .step ul { padding-left: 20px; margin: 6px 0 10px; color: var(--text-muted); }
+  .step ul li { margin-bottom: 4px; }
+
+  /* Screenshot placeholder */
+  .screenshot {
+    margin: 12px 0 8px;
+    background: var(--bg-card);
+    border: 1px dashed var(--border-strong);
+    border-radius: 10px;
+    padding: 28px 18px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .screenshot strong {
+    display: block; color: var(--lime);
+    font-weight: 600; margin-bottom: 4px;
+    font-size: 11px; letter-spacing: 0.8px; text-transform: uppercase;
+  }
+  .screenshot .hint {
+    display: block; font-size: 12px;
+    color: var(--text-dim); margin-top: 6px;
+    font-style: italic;
+  }
+
+  /* Callout boxes */
+  .callout {
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin: 14px 0;
+    border: 0.5px solid;
+    font-size: 14px; line-height: 1.65;
+  }
+  .callout .label {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.8px;
+    text-transform: uppercase; margin-bottom: 6px;
+    display: block;
+  }
+  .callout.info {
+    background: rgba(198,255,58,0.05);
+    border-color: rgba(198,255,58,0.22);
+  }
+  .callout.info .label { color: var(--lime); }
+  .callout.warn {
+    background: rgba(255,197,66,0.06);
+    border-color: rgba(255,197,66,0.25);
+  }
+  .callout.warn .label { color: var(--amber); }
+  .callout.danger {
+    background: rgba(255,107,107,0.06);
+    border-color: rgba(255,107,107,0.25);
+  }
+  .callout.danger .label { color: var(--red); }
+
+  /* FAQ */
+  .faq {
+    margin-top: 48px;
+    padding-top: 32px;
+    border-top: 0.5px solid var(--border);
+  }
+  .faq h2 {
+    font-size: 22px; font-weight: 600;
+    margin: 0 0 16px; letter-spacing: -0.2px;
+  }
+  details {
+    background: var(--bg-card);
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    padding: 0 16px;
+    margin-bottom: 8px;
+  }
+  details[open] { border-color: var(--border-strong); }
+  summary {
+    cursor: pointer; padding: 14px 0;
+    font-weight: 500; color: var(--text);
+    list-style: none;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::after {
+    content: "＋"; float: right;
+    color: var(--text-dim); font-weight: 300;
+  }
+  details[open] summary::after { content: "－"; }
+  details p, details ul {
+    color: var(--text-muted);
+    margin: 0 0 14px; font-size: 14px;
+  }
+
+  /* Footer */
+  footer {
+    margin-top: 80px;
+    padding-top: 32px;
+    border-top: 0.5px solid var(--border);
+    color: var(--text-dim);
+    font-size: 13px;
+    text-align: center;
+  }
+  footer a { color: var(--text-muted); margin: 0 8px; }
+
+  @media (max-width: 640px) {
+    .hero h1 { font-size: 28px; }
+    .step { grid-template-columns: 36px 1fr; gap: 12px; }
+    .step .num { width: 28px; height: 28px; font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <img class="logo" src="/MioIsland/logo.png" alt="Mio Island">
+  <span class="brand">Mio Island</span>
+  <span class="sep">›</span>
+  <span class="crumb">配对 iPhone 教程</span>
+  <a class="home" href="/MioIsland/">← 返回首页</a>
+</nav>
+
+<main>
+
+  <header class="hero">
+    <div class="eyebrow">Setup Guide · 配置教程</div>
+    <h1>配对你的 iPhone</h1>
+    <p class="subtitle">
+      用 Mio Island (Mac) 和 CodeLight (iPhone) 打通一条加密通道, Claude Code 的状态 / 消息 / 审批请求都能实时同步到你的手机上, 哪怕人不在电脑前。
+    </p>
+    <div class="meta">
+      <span class="pill"><strong>准备时间</strong> · 约 5 分钟</span>
+      <span class="pill"><strong>需要</strong> · Mac + iPhone + 一个中继服务器</span>
+      <span class="pill"><strong>Mio Island</strong> · v2.1.9+</span>
+    </div>
+  </header>
+
+  <!-- STEP 0 · 准备 -->
+  <section class="step">
+    <div class="num">0</div>
+    <div>
+      <h2>你需要准备什么</h2>
+      <ul>
+        <li><strong>Mac 端</strong>: 安装 Mio Island (<code>brew install --cask xmqywx/codeisland/codeisland</code> 或 <a href="https://github.com/MioMioOS/MioIsland/releases/latest">下载 DMG</a>)</li>
+        <li><strong>iPhone 端</strong>: App Store 下载 CodeLight</li>
+        <li><strong>中继服务器</strong>: 一台能跑 MioServer 的机器 (自建) 或公共服务器的 URL</li>
+      </ul>
+      <div class="callout info">
+        <span class="label">💡 为什么需要服务器</span>
+        服务器是 Mac 和 iPhone 之间的零知识转发器, 消息端到端加密, 服务器看不到明文。你可以用 Docker 自己部署一个 (<a href="https://github.com/MioMioOS/MioServer">MioServer 仓库</a>), 或者用朋友/团队共享的实例。
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 1 · 打开配对面板 -->
+  <section class="step">
+    <div class="num">1</div>
+    <div>
+      <h2>在 Mac 上打开 "Pair iPhone"</h2>
+      <p>启动 Mio Island 后, 鼠标移到屏幕顶部刘海区域, 刘海展开 → 点击齿轮 ⚙️ 菜单 → 选 <strong>Pair iPhone</strong>。</p>
+      <p class="note">或者: 系统设置 → <strong>CodeLight</strong> 标签页 → 点右上角 "配对新手机" 按钮。</p>
+      <div class="screenshot">
+        <strong>[截图 01]</strong>
+        Mio Island 刘海菜单 / 系统设置 CodeLight 面板的 "Pair iPhone" 入口
+        <span class="hint">截图建议: 显示刘海展开态, 菜单里 "Pair iPhone" 那一行被悬停高亮</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 2 · 配置服务器 URL -->
+  <section class="step">
+    <div class="num">2</div>
+    <div>
+      <h2>配置中继服务器地址</h2>
+      <p>首次打开会看到 <strong>服务器机架图标</strong> + 一个输入框 — 因为还没配过服务器, 二维码暂时生成不出来。</p>
+      <ul>
+        <li>在输入框里粘贴你的服务器 URL, 例如 <code>https://relay.example.com</code></li>
+        <li>必须是 <code>https://</code> 或 <code>http://</code> 开头, 并且带合法 host</li>
+        <li>点 <strong>Save and Connect</strong> → 会显示转圈 1-2 秒表示正在连</li>
+      </ul>
+      <div class="screenshot">
+        <strong>[截图 02]</strong>
+        "CodeLight Server" 未配置状态下的服务器 URL 输入面板
+        <span class="hint">截图建议: 柠檬绿卡片, 中间是服务器机架图标 + 输入框 + "Save and Connect" 按钮</span>
+      </div>
+      <div class="callout warn">
+        <span class="label">⚠️ 地址保存在哪里</span>
+        仅保存在本机 (UserDefaults), 不会上传任何地方。换电脑要重填。
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 3 · 获取配对码 -->
+  <section class="step">
+    <div class="num">3</div>
+    <div>
+      <h2>查看二维码 + 6 位配对码</h2>
+      <p>连接成功后, 面板会自动切到 <strong>配对就绪</strong> 状态:</p>
+      <ul>
+        <li>顶部 <strong>二维码</strong> (白底黑像素, 约 160×160) — iPhone 直接扫</li>
+        <li>下面一个 <strong>6 位大字配对码</strong> (比如 <code>X7K2M9</code>) — 手动输入备用</li>
+        <li>最下面两个胶囊: 服务器地址 (可点击修改) + 当前 Mac 的设备名</li>
+      </ul>
+      <div class="screenshot">
+        <strong>[截图 03]</strong>
+        Mac 上 Pair iPhone 面板的二维码 + 6 位配对码态
+        <span class="hint">截图建议: 同一张图既显示 QR code 又显示下面的 X7K2M9 大字码, 加两个胶囊 (服务器 pill + 设备名 pill)</span>
+      </div>
+      <div class="callout info">
+        <span class="label">💡 配对码永久有效</span>
+        同一个 6 位码可以配多台 iPhone, 不过期、不自动刷新 (除非你更换服务器)。
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 4 · iPhone 端配对 -->
+  <section class="step">
+    <div class="num">4</div>
+    <div>
+      <h2>在 iPhone 上打开 CodeLight 并配对</h2>
+      <p>从 App Store 下载安装 CodeLight, 启动后进入配对流程:</p>
+      <ul>
+        <li><strong>方式 A · 扫码</strong>: 允许相机权限 → 对准 Mac 上的二维码 → 自动识别并填入服务器 URL + 配对码</li>
+        <li><strong>方式 B · 手输</strong>: 输入服务器 URL (和 Mac 填的一样) + 6 位配对码 <code>X7K2M9</code></li>
+        <li>点 "配对" 按钮, 等待约 1-2 秒</li>
+      </ul>
+      <div class="screenshot">
+        <strong>[截图 04]</strong>
+        iPhone CodeLight 首屏 · 配对输入界面 (服务器 + 配对码)
+        <span class="hint">截图建议: 两张小图并排: 左边 App Store 下载页面, 右边 CodeLight 配对输入界面</span>
+      </div>
+      <div class="screenshot">
+        <strong>[截图 05]</strong>
+        iPhone 扫描 Mac 二维码的瞬间 (相机取景框对准 QR code)
+        <span class="hint">截图建议: 用手机拍 Mac 屏幕上 QR code 的画面, 展示 "扫码即可" 的体感</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 5 · 验证连接 -->
+  <section class="step">
+    <div class="num">5</div>
+    <div>
+      <h2>验证连接是否成功</h2>
+      <p>配对后立刻检查两端状态, 两边都绿灯才算通:</p>
+      <ul>
+        <li><strong>Mac 端</strong> — 面板底部多出 "Linked Devices" 一栏, 列出了刚配的 iPhone 名字 (比如 "Carey's iPhone")</li>
+        <li><strong>Mac 刘海菜单</strong> — "Pair iPhone" 那一行右侧出现柠檬绿点 + "Online" 字样</li>
+        <li><strong>iPhone 端</strong> — "Macs" 列表里多出这台 Mac, 可以点进去看会话</li>
+      </ul>
+      <div class="screenshot">
+        <strong>[截图 06]</strong>
+        Mac 面板上 "Linked Devices" 区块显示 iPhone 已连接 (每行有 📱 图标 + 名字 + 可关闭的 ✕)
+        <span class="hint">截图建议: 展开后面板下半部分, 能看到 "Linked Devices 1" 和 iPhone 条目</span>
+      </div>
+      <div class="screenshot">
+        <strong>[截图 07]</strong>
+        iPhone CodeLight Macs 列表显示 Mac 已配对
+        <span class="hint">截图建议: iPhone 正竖屏截图, 主界面 Macs 列表第一条是刚配的 Mac 名字 + 在线小绿点</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 6 · 打开 hooks -->
+  <section class="step">
+    <div class="num">6</div>
+    <div>
+      <h2>开启 Hooks (实时状态同步)</h2>
+      <p>配对只是建了通道, 要让 Claude Code 的状态真正实时流到手机, 还得让 Mio Island 监听到它。</p>
+      <p>打开 Mio Island → 系统设置 → <strong>通用</strong> → 找到 <strong>钩子</strong> 那一行, 确认开关是打开状态 (绿色)。</p>
+      <p class="note">首次启动会自动安装, 没开就手动打开即可。</p>
+      <div class="screenshot">
+        <strong>[截图 08]</strong>
+        系统设置 · 通用 · "钩子" 开关处于 ON 状态
+        <span class="hint">截图建议: 系统设置窗口截图, 聚焦在 General tab 里 "钩子" 那个 toggle 亮着绿色</span>
+      </div>
+      <div class="callout info">
+        <span class="label">💡 Hook 做什么</span>
+        安装一个 Python 脚本到 <code>~/.claude/hooks/codeisland-state.py</code>, 配到 Claude Code 的 <code>~/.claude/settings.json</code> 里。每次 Claude 运行状态变化 (开始思考 / 跑工具 / 完成 / 要审批) 都通过 Unix socket 推给 Mio Island, 再转发到 iPhone。纯本地 IPC, 不走网络。
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 7 · 端到端测试 -->
+  <section class="step">
+    <div class="num">7</div>
+    <div>
+      <h2>端到端测试</h2>
+      <p>最后跑一次真实会话验证整条链路:</p>
+      <ol style="padding-left: 20px; color: var(--text-muted);">
+        <li>Mac 上打开任意终端, 在项目目录里执行 <code>claude</code></li>
+        <li>问一个需要调工具的问题, 比如 "看下当前目录文件"</li>
+        <li>观察三处: <strong>刘海状态点</strong> / <strong>刘海文字</strong> / <strong>iPhone Dynamic Island 或锁屏 Live Activity</strong></li>
+        <li>三端应该都在几百毫秒内显示同步的 "Working..." / 工具名 / 完成</li>
+      </ol>
+      <div class="screenshot">
+        <strong>[截图 09]</strong>
+        Mac 刘海 + iPhone Dynamic Island 同步显示 "Working · Read" 的瞬间
+        <span class="hint">截图建议: 两张同一时刻的图合并: 左 Mac 刘海截图, 右 iPhone 锁屏 Live Activity, 都显示同一个会话状态</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 高级操作 -->
+  <section class="step">
+    <div class="num">+</div>
+    <div>
+      <h2>进阶操作</h2>
+      <p><strong>换服务器:</strong> 点 Pair 面板下方的服务器胶囊 (带铅笔图标) → 输入新 URL → Save。原来已配对的 iPhone 需要重新扫码。</p>
+      <p><strong>解绑单台 iPhone:</strong> "Linked Devices" 里每一条最右边的 ✕ 按钮。</p>
+      <p><strong>完全重置:</strong> 系统设置 → CodeLight → 删除所有 linked devices, 再清空服务器 URL。</p>
+      <div class="screenshot">
+        <strong>[截图 10]</strong>
+        点击服务器胶囊进入 "Change Server" 编辑态
+        <span class="hint">截图建议: 服务器胶囊被点击后, 面板切换到输入 URL 的编辑模式, 下面有 Cancel + Save 两个按钮</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="faq">
+    <h2>常见问题</h2>
+
+    <details>
+      <summary>服务器 URL 保存不了 / 一直转圈</summary>
+      <p>检查:</p>
+      <ul>
+        <li>URL 必须 <code>https://</code> 或 <code>http://</code> 开头, 带合法域名</li>
+        <li>服务器必须可达 (浏览器打开 URL 能看到响应)</li>
+        <li>防火墙 / 代理是否挡了外连? Mio Island 走的是 Socket.io (WebSocket)</li>
+        <li>系统设置 → 通用 → Anthropic API 代理 字段影响不到 CodeLight 同步, 但你的系统代理会 (CodeLight 走 URLSession 默认用系统代理)</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary>二维码出不来, 只显示转圈</summary>
+      <p>说明服务器连接没成功。通常原因:</p>
+      <ul>
+        <li>服务器挂了 / DNS 错了 — 浏览器打开那个 URL 确认</li>
+        <li>证书不被信任 (自签证书) — 导入到 macOS 钥匙串</li>
+        <li>服务器 API 版本不匹配 — 确认 MioServer 是最新版</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary>iPhone 配对成功了, 但状态不同步</summary>
+      <p>99% 是 hook 没装或没开:</p>
+      <ul>
+        <li>系统设置 → 通用 → 钩子 开关打开</li>
+        <li>检查文件存在: <code>ls ~/.claude/hooks/codeisland-state.py</code></li>
+        <li>检查 Claude Code 配置: <code>~/.claude/settings.json</code> 里的 <code>hooks</code> 字段应该包含多个事件, 每个都指向 <code>codeisland-state.py</code></li>
+        <li>重启 Claude Code 会话 (老会话的 hook 是启动时加载的, 改了配置要重开)</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary>一台 Mac 能配几台 iPhone? 一台 iPhone 能配几台 Mac?</summary>
+      <p>都是多对多:</p>
+      <ul>
+        <li>同一个 6 位配对码可以被多台 iPhone 扫 (出差时用工作机 + 私人机都配)</li>
+        <li>同一台 iPhone 可以连多台 Mac (办公 Mac + 家里 Mac) — 在 CodeLight 里切换</li>
+        <li>服务器同时在线设备数取决于 MioServer 的并发限制 (默认单账户 1 台同时连)</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary>服务器会看到我的代码 / 消息吗?</summary>
+      <p>不会。通信协议是端到端加密 (Ed25519 签名 + 对称加密), 服务器只做转发, 不持久化内容。你如果不信, 可以自己看 <a href="https://github.com/MioMioOS/MioServer">MioServer 源码</a>。</p>
+    </details>
+
+    <details>
+      <summary>想完全卸载 / 停用 Mio Island 的钩子</summary>
+      <p>系统设置 → 通用 → 钩子 关掉即可. 它会:</p>
+      <ul>
+        <li>从 <code>~/.claude/settings.json</code> 里删除 Mio Island 的 hook entries (其他工具的 hooks 不动)</li>
+        <li>删除 <code>~/.claude/hooks/codeisland-state.py</code></li>
+        <li>刘海仍然可用, 但状态同步停了 (显示的是上一次快照)</li>
+      </ul>
+    </details>
+  </section>
+
+</main>
+
+<footer>
+  Mio Island · 由 <a href="https://github.com/MioMioOS">MioMioOS</a> 开源 ·
+  <a href="/MioIsland/">首页</a> ·
+  <a href="https://github.com/MioMioOS/MioIsland/issues">反馈 / Issue</a> ·
+  <a href="https://github.com/MioMioOS/CodeLight">CodeLight 仓库</a>
+</footer>
+
+</body>
+</html>
