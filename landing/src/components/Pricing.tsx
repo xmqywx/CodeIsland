@@ -1,6 +1,8 @@
-import { Check, Monitor, Smartphone } from "lucide-react"
+import { Check, Monitor, Smartphone, BookOpen, Sparkles } from "lucide-react"
 import { useI18n } from "../lib/i18n"
 import SpotlightCard from "./reactbits/SpotlightCard"
+
+const base = import.meta.env.BASE_URL
 
 export default function Pricing() {
   const { t } = useI18n()
@@ -29,6 +31,20 @@ export default function Pricing() {
         <div style={{ animation: "heroEnter 0.8s ease-out both" }} className="text-center mb-12 sm:mb-20">
           <span className="font-mono text-xs text-green uppercase tracking-[0.3em]">{t("pricing.tag" as any)}</span>
           <h2 className="font-display text-3xl sm:text-4xl sm:text-5xl font-extrabold text-text-primary mt-4">{t("pricing.title" as any)}</h2>
+        </div>
+
+        {/* Trial banner — mirrors the pair-setup tutorial's "Free trial auto-starts" message */}
+        <div
+          style={{ animation: "heroEnter 0.6s ease-out 0.05s both" }}
+          className="max-w-3xl mx-auto mb-8 sm:mb-10 flex items-center gap-3 px-5 py-3 rounded-xl bg-green/[0.06] border border-green/20"
+        >
+          <Sparkles size={16} className="text-green shrink-0" />
+          <span className="font-mono text-[10px] sm:text-xs text-green uppercase tracking-[0.2em] shrink-0">
+            {t("pricing.trialBanner.label" as any)}
+          </span>
+          <span className="text-xs sm:text-sm text-text-secondary leading-snug">
+            {t("pricing.trialBanner.body" as any)}
+          </span>
         </div>
 
         {/* Cards */}
@@ -89,8 +105,8 @@ export default function Pricing() {
                 <div>
                   <h3 className="font-display text-xl font-bold text-text-primary">{t("pricing.codelight.name" as any)}</h3>
                 </div>
-                <span className="ml-auto font-mono text-xs bg-amber/15 text-amber border border-amber/20 rounded-full px-3 py-1">
-                  {t("pricing.codelight.beta" as any)}
+                <span className="ml-auto font-mono text-xs bg-green/15 text-green border border-green/20 rounded-full px-3 py-1">
+                  {t("pricing.codelight.price" as any)}
                 </span>
               </div>
               <p className="text-sm text-text-muted mb-6 leading-relaxed">{t("pricing.codelight.desc" as any)}</p>
@@ -110,7 +126,14 @@ export default function Pricing() {
               >
                 {t("pricing.codelight.cta" as any)}
               </a>
-              <p className="text-xs text-text-muted mt-3 text-center">{t("pricing.codelight.future" as any)}</p>
+              <a
+                href={`${base}pair-setup.html`}
+                className="flex items-center justify-center gap-1.5 text-xs text-green/85 hover:text-green mt-3 transition-colors"
+              >
+                <BookOpen size={12} />
+                {t("pricing.codelight.pairTutorial" as any)}
+              </a>
+              <p className="text-xs text-text-muted mt-3 text-center leading-relaxed">{t("pricing.codelight.future" as any)}</p>
             </div>
           </SpotlightCard>
         </div>

@@ -1,5 +1,7 @@
 import { useState } from "react"
-import { Users } from "lucide-react"
+import { Users, BookOpen } from "lucide-react"
+
+const base = import.meta.env.BASE_URL
 import { MacbookScroll } from "@/components/ui/macbook-scroll"
 import MacScreenContent from "./MacScreenContent"
 import CommunityModal from "./CommunityModal"
@@ -104,6 +106,17 @@ export default function Hero() {
                   <Users size={16} />
                   {t("community.join")}
                 </button>
+                <a
+                  href={`${base}pair-setup.html`}
+                  className="group flex items-center justify-center gap-2.5 px-8 py-3.5 rounded-xl font-mono text-sm text-text-primary transition-all duration-300 hover:scale-[1.03] cursor-pointer"
+                  style={{
+                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                  }}
+                >
+                  <BookOpen size={16} />
+                  {t("hero.pairTutorial")}
+                </a>
                 <a
                   href="https://github.com/MioMioOS/MioIsland"
                   className="group flex items-center justify-center gap-2.5 glass px-8 py-3.5 rounded-xl font-mono text-sm text-green-bright transition-all duration-300 hover:scale-[1.03] hover:text-text-primary"
