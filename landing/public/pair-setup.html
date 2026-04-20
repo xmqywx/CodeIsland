@@ -281,10 +281,6 @@
         <span class="label">💡 为什么走官方服务器</span>
         CodeLight 所有功能 (Dynamic Island 实时推送、多端同步、远程审批、会话转发) 都走服务器中转, 协议端到端加密, 服务器只做零知识转发、不落盘、不记 IP 日志, 看不到消息明文。官方服务器已经调优好 APNs 推送、并发控制、试用/订阅状态管理, 直接用最省事。地址仅保存在你本机 UserDefaults, 不上传任何地方。
       </div>
-      <div class="callout warn">
-        <span class="label">🛠 想自建? (进阶)</span>
-        <a href="https://github.com/MioMioOS/MioServer">MioServer 开源</a>, 可以自己 Docker 部署。自建服务器不吃官方试用 / 订阅限制 (自己扛服务器成本和 APNs 证书就行)。除非有强隐私需求或企业内网场景, 否则官方服务器更省心。
-      </div>
     </div>
   </section>
 
@@ -430,10 +426,6 @@
         每个 socket 连接握手时, 服务器跑 <code>checkAccess()</code>: trial 过期自动改状态拒连、兑换码过期也拒、付费用户查 StoreKit 凭证 + 3 台并发限制。所以把官方地址 <code>code.7ove.online</code> 写进教程是安全的 — 无凭证连不上。
       </div>
 
-      <div class="callout warn">
-        <span class="label">🛠 自建服务器的情况</span>
-        Mac 端填自建 MioServer URL, CodeLight 连上去走自家服务器, 绕过官方 trial / 订阅 / 3 设备限制 — 但得自己扛服务器成本 + APNs 证书配置。
-      </div>
     </div>
   </section>
 
@@ -458,9 +450,8 @@
     <h2>常见问题</h2>
 
     <details>
-      <summary>服务器 URL 填什么? 必须用官方的吗?</summary>
-      <p>大多数人直接填官方地址 <code>https://code.7ove.online</code> 就好 — 零运维, 推送/并发/稳定性都调好了。</p>
-      <p>如果有强隐私需求或企业内网部署, 可以自己用 MioServer Docker 起一个, 填自建 URL。自建用户不受官方 3 台设备限制, 但得自己维护。</p>
+      <summary>服务器 URL 填什么?</summary>
+      <p>固定填官方地址 <code>https://code.7ove.online</code>。CodeLight 的 APNs 推送、并发控制、试用/订阅状态、兑换码校验都在这个服务器上。</p>
     </details>
 
     <details>
@@ -475,8 +466,8 @@
 
     <details>
       <summary>服务器能看到我的代码 / 消息吗?</summary>
-      <p>不能。协议端到端加密 (Ed25519 签名 + 对称加密), 服务器只转发不落盘、不记日志、不记 IP, 看不到消息内容。</p>
-      <p>服务器数据库只存: 设备 pairing code、付费状态、试用起始/过期时间、最后连接时间、APNs 推送 token。<a href="https://github.com/MioMioOS/MioServer">源码可查</a>。</p>
+      <p>不能。协议端到端加密 (Ed25519 签名 + 对称加密), 服务器只做消息转发, 不落盘、不记日志、不记 IP, 看不到消息内容。</p>
+      <p>服务器数据库只存最小化运行信息: 设备配对码、试用/付费状态、最后连接时间、APNs 推送 token, 从不保存消息内容、代码文件或任何你在 Claude Code 里输入的内容。</p>
     </details>
 
     <details>
@@ -522,13 +513,11 @@
 
     <details>
       <summary>试用期过了, 怎么办?</summary>
-      <p>三选一:</p>
+      <p>两条路:</p>
       <ul>
-        <li>App 内 <strong>$13.99 买断</strong> — 永久解锁, 3 台设备并发</li>
-        <li>参与 <strong>"发一条, 免费用"</strong> 活动换 30 天兑换码</li>
-        <li>自己部署 <strong>MioServer</strong>, Mac 端填自建 URL — 不吃官方试用/订阅限制</li>
+        <li>App 内 <strong>$13.99 买断</strong> — 永久解锁, 同一 Apple ID 最多 3 台设备并发, 支持恢复购买</li>
+        <li>参与 <strong>"发一条, 免费用"</strong> 活动换 <strong>30 天兑换码</strong> — 公开平台发一条关于 MioIsland/Code Light 的内容, 截图私信开发者, 审核通过即发码. 持续发一直免费</li>
       </ul>
-      <p>注意: 卸载重装 CodeLight 不能重新开试用, 服务器按设备公钥追踪, 重装会生成新公钥但服务器会尝试通过其他信号关联 (后续会加设备指纹严格校验)。</p>
     </details>
 
     <details>
