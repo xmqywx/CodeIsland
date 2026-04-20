@@ -40,13 +40,13 @@ final class NotchCustomizationStoreTests: XCTestCase {
 
     func test_init_withExistingV1Key_loadsIt() throws {
         var persisted = NotchCustomization.default
-        persisted.theme = .cyber
+        persisted.theme = .neonTokyo
         persisted.defaultGeometry.maxWidth = 520
         let data = try JSONEncoder().encode(persisted)
         UserDefaults.standard.set(data, forKey: v1Key)
 
         let store = NotchCustomizationStore()
-        XCTAssertEqual(store.customization.theme, .cyber)
+        XCTAssertEqual(store.customization.theme, .neonTokyo)
         XCTAssertEqual(store.customization.defaultGeometry.maxWidth, 520)
     }
 
@@ -78,13 +78,13 @@ final class NotchCustomizationStoreTests: XCTestCase {
 
     func test_update_mutatesAndPersists() throws {
         let store = NotchCustomizationStore()
-        store.update { $0.theme = .paper }
+        store.update { $0.theme = .forest }
 
-        XCTAssertEqual(store.customization.theme, .paper)
+        XCTAssertEqual(store.customization.theme, .forest)
 
         let data = try XCTUnwrap(UserDefaults.standard.data(forKey: v1Key))
         let decoded = try JSONDecoder().decode(NotchCustomization.self, from: data)
-        XCTAssertEqual(decoded.theme, .paper)
+        XCTAssertEqual(decoded.theme, .forest)
     }
 
     func test_updateGeometry_mutatesAndPersists() throws {
@@ -131,10 +131,10 @@ final class NotchCustomizationStoreTests: XCTestCase {
     func test_editLifecycle_persistsCommittedChangesAcrossSimulatedReload() throws {
         let store1 = NotchCustomizationStore()
         store1.enterEditMode()
-        store1.update { $0.theme = .mint }
+        store1.update { $0.theme = .sakura }
         store1.commitEdit()
 
         let store2 = NotchCustomizationStore()
-        XCTAssertEqual(store2.customization.theme, .mint)
+        XCTAssertEqual(store2.customization.theme, .sakura)
     }
 }

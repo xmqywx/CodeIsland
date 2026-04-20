@@ -82,10 +82,14 @@ final class SystemSettingsWindow {
             return
         }
 
-        let contentView = SystemSettingsContentView(initialTab: initialTab) { self.close() }
+        let contentView = SystemSettingsContentView(
+            initialTab: initialTab,
+            onClose: { self.close() },
+            onHide: { self.hide() }
+        )
         let hostingView = NSHostingView(rootView: contentView)
         let w = KeyableSettingsWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 720, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 960, height: 720),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
@@ -101,7 +105,7 @@ final class SystemSettingsWindow {
 
         if let screen = NSScreen.main {
             let f = screen.frame
-            w.setFrameOrigin(NSPoint(x: f.midX - 360, y: f.midY - 280))
+            w.setFrameOrigin(NSPoint(x: f.midX - 480, y: f.midY - 360))
         }
 
         w.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.maximumWindow)))
@@ -114,6 +118,13 @@ final class SystemSettingsWindow {
     func close() {
         window?.close()
         window = nil
+    }
+
+    /// Hide the window without destroying it — next `show()` re-foregrounds the
+    /// same instance (state preserved). Used by the titlebar minimize button;
+    /// borderless windows can't `miniaturize` to the Dock, so we `orderOut`.
+    func hide() {
+        window?.orderOut(nil)
     }
 }
 
@@ -162,28 +173,61 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .about:          return L10n.tabAbout
         }
     }
+
+    /// English subtitle shown next to the Chinese H1 on each detail pane —
+    /// mirrors the reference mock's "通用  General preferences" pattern.
+    /// When the UI is already English, we skip it to avoid duplicating the title.
+    var englishSubtitle: String {
+        guard L10n.isChinese else { return "" }
+        switch self {
+        case .general:        return "General preferences"
+        case .appearance:     return "Appearance"
+        case .notifications:  return "Notifications"
+        case .behavior:       return "Behavior"
+        case .plugins:        return "Plugins & Extensions"
+        case .codelight:      return "CodeLight"
+        case .cmuxConnection: return "cmux Connection"
+        case .logs:           return "Logs"
+        case .advanced:       return "Advanced"
+        case .about:          return "About"
+        }
+    }
 }
 
 // MARK: - Shared theming constants
 
-/// Two-surface theme: the sidebar is a bold lime strip, the detail area is
-/// a dark panel so the content doesn't feel retina-burning. This also
-/// matches the existing dark-themed embedded rows (ScreenPickerRow, etc.)
-/// without forcing a colorScheme override on them.
+/// Graphite two-surface theme: sidebar is a warm charcoal (`#201f27`),
+/// detail area is a slightly darker graphite (`#1c1c1e`). Lime survives
+/// only as an accent on toggles, active sidebar icons, and focus rings.
+/// Palette is lifted from the Anthropic-style reference design — see
+/// `~/Desktop/1_files/UI.jsx` and the System Settings HTML mock.
 private enum Theme {
-    // Brand lime — ONLY used on the sidebar surface.
-    static let sidebarFill = Color(red: 0xCA/255, green: 0xFF/255, blue: 0x00/255)
-    static let sidebarText = Color.black
-    static let sidebarSelected = Color.black.opacity(0.85)
-    static let sidebarSelectedText = Color(red: 0xCA/255, green: 0xFF/255, blue: 0x00/255)
-    static let sidebarBorder = Color.black.opacity(0.12)
+    // Sidebar — warm charcoal, NOT lime anymore.
+    static let sidebarFill = Color(red: 0x20/255, green: 0x1F/255, blue: 0x27/255)
+    static let sidebarText = Color.white
+    static let sidebarActiveFill = Color.white.opacity(0.08)
+    static let sidebarHoverFill = Color.white.opacity(0.04)
+    static let sidebarBorder = Color.white.opacity(0.06)
 
-    // Dark panel — used for the detail area, cards, toggles, text.
-    static let detailFill = Color(red: 0.10, green: 0.10, blue: 0.11)
+    // Detail panel — graphite, close to real macOS System Settings.
+    static let detailFill = Color(red: 0x1C/255, green: 0x1C/255, blue: 0x1E/255)
     static let detailText = Color.white
-    static let cardFill = Color.white.opacity(0.04)
+
+    // Cards and rows.
+    static let cardFill = Color.white.opacity(0.03)
     static let cardBorder = Color.white.opacity(0.08)
-    static let subtle = Color.white.opacity(0.5)
+    static let rowDivider = Color.white.opacity(0.06)
+    static let subtle = Color.white.opacity(0.42)
+    static let subtleStrong = Color.white.opacity(0.72)
+
+    // Accent (neon lime) — used sparingly: toggles, active icons, focus.
+    static let accent = Color(red: 0xC6/255, green: 0xFF/255, blue: 0x3A/255)
+
+    // Real macOS traffic-light colors.
+    static let tlRed = Color(red: 1.00, green: 0.373, blue: 0.341)
+    static let tlYellow = Color(red: 0.996, green: 0.737, blue: 0.180)
+    static let tlGreen = Color(red: 0.157, green: 0.784, blue: 0.251)
+    static let tlStroke = Color.black.opacity(0.25)
 }
 
 // MARK: - Content root
@@ -191,11 +235,18 @@ private enum Theme {
 private struct SystemSettingsContentView: View {
     let initialTab: SettingsTab
     let onClose: () -> Void
+    let onHide: () -> Void
     @State private var tab: SettingsTab
+    @State private var isHoveringTitleBar = false
 
-    init(initialTab: SettingsTab = .general, onClose: @escaping () -> Void) {
+    init(
+        initialTab: SettingsTab = .general,
+        onClose: @escaping () -> Void,
+        onHide: @escaping () -> Void
+    ) {
         self.initialTab = initialTab
         self.onClose = onClose
+        self.onHide = onHide
         self._tab = State(initialValue: initialTab)
     }
 
@@ -204,89 +255,127 @@ private struct SystemSettingsContentView: View {
         // cut the sidebar's opaque lime fill and the detail's dark fill,
         // then the overlay border is stroked on the clipped edge on top.
         // Putting shadow OUTSIDE the clip so it isn't cut off.
-        HStack(spacing: 0) {
-            sidebar
-            detail
+        VStack(spacing: 0) {
+            titleBar
+            HStack(spacing: 0) {
+                sidebar
+                detail
+            }
         }
-        .frame(width: 720, height: 560)
+        .frame(width: 960, height: 720)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
         )
         .shadow(color: .black.opacity(0.5), radius: 30, y: 12)
+        .onHover { isHoveringTitleBar = $0 }
+    }
+
+    // MARK: Title bar
+
+    /// Real macOS-style chrome: red/yellow/green dots on the left, centered
+    /// title. Borderless windows have no OS chrome, so we synthesize it.
+    private var titleBar: some View {
+        ZStack {
+            HStack(spacing: 8) {
+                trafficLight(fill: Theme.tlRed, glyph: "xmark", action: onClose)
+                trafficLight(fill: Theme.tlYellow, glyph: "minus", action: onHide)
+                // Green is decorative (no fullscreen for a utility window).
+                Circle()
+                    .fill(Theme.tlGreen)
+                    .frame(width: 12, height: 12)
+                    .overlay(Circle().strokeBorder(Theme.tlStroke, lineWidth: 0.5))
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+
+            Text(L10n.systemSettings)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.white.opacity(0.85))
+        }
+        .frame(height: 38)
+        .background(Theme.sidebarFill)
+        .overlay(
+            Rectangle()
+                .fill(Color.black.opacity(0.4))
+                .frame(height: 0.5),
+            alignment: .bottom
+        )
+    }
+
+    @ViewBuilder
+    private func trafficLight(fill: Color, glyph: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Circle()
+                .fill(fill)
+                .frame(width: 12, height: 12)
+                .overlay(
+                    Image(systemName: glyph)
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundColor(.black.opacity(isHoveringTitleBar ? 0.6 : 0))
+                )
+                .overlay(Circle().strokeBorder(Theme.tlStroke, lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Sidebar
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Title
-            HStack(spacing: 6) {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 13))
-                    .foregroundColor(Theme.sidebarText.opacity(0.75))
-                Text(L10n.systemSettings)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Theme.sidebarText.opacity(0.9))
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 18)
-            .padding(.bottom, 14)
-
-            // Tab list
+            Color.clear.frame(height: 10)
             ForEach(SettingsTab.allCases) { t in
                 tabRow(t)
             }
 
             Spacer()
 
-            // Close button at bottom
+            Rectangle()
+                .fill(Color.white.opacity(0.06))
+                .frame(height: 0.5)
+                .padding(.horizontal, 10)
+
             Button {
-                onClose()
+                NSApplication.shared.terminate(nil)
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "xmark.circle.fill")
+                HStack(spacing: 8) {
+                    Image(systemName: "power")
                         .font(.system(size: 12))
-                    Text(L10n.back)
-                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.55))
+                        .frame(width: 18)
+                    Text(L10n.isChinese ? "退出" : "Quit")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.white.opacity(0.7))
+                    Spacer()
                 }
-                .foregroundColor(Theme.sidebarText.opacity(0.55))
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .padding(.vertical, 11)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
-        .frame(width: 180)
+        .frame(width: 196)
         .background(Theme.sidebarFill)
+        .overlay(
+            Rectangle()
+                .fill(Color.black.opacity(0.3))
+                .frame(width: 0.5),
+            alignment: .trailing
+        )
     }
 
     @ViewBuilder
     private func tabRow(_ t: SettingsTab) -> some View {
         let isSelected = tab == t
-        Button {
-            withAnimation(.easeOut(duration: 0.15)) { tab = t }
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: t.icon)
-                    .font(.system(size: 12))
-                    .frame(width: 18)
-                Text(t.label)
-                    .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
-                Spacer(minLength: 0)
+        SidebarPillRow(
+            icon: t.icon,
+            label: t.label,
+            isSelected: isSelected,
+            action: {
+                withAnimation(.easeOut(duration: 0.15)) { tab = t }
             }
-            .foregroundColor(isSelected ? Theme.sidebarSelectedText : Theme.sidebarText.opacity(0.78))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? Theme.sidebarSelected : Color.clear)
-            )
-            .padding(.horizontal, 8)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        )
     }
 
     // MARK: Detail
@@ -295,10 +384,18 @@ private struct SystemSettingsContentView: View {
     private var detail: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
-                Text(tab.label)
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(Theme.detailText.opacity(0.95))
-                    .padding(.top, 18)
+                // Large H1 + English subtitle, mirroring the reference mock.
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(tab.label)
+                        .font(.system(size: 26, weight: .semibold))
+                        .foregroundColor(.white)
+                        .tracking(-0.4)
+                    Text(tab.englishSubtitle)
+                        .font(.system(size: 12))
+                        .foregroundColor(Theme.subtle)
+                }
+                .padding(.top, 22)
+                .padding(.bottom, 4)
 
                 switch tab {
                 case .general:        GeneralTab()
@@ -313,8 +410,8 @@ private struct SystemSettingsContentView: View {
                 case .about:          AboutTab()
                 }
             }
-            .padding(.horizontal, 22)
-            .padding(.bottom, 22)
+            .padding(.horizontal, 26)
+            .padding(.bottom, 26)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.detailFill)
@@ -323,8 +420,46 @@ private struct SystemSettingsContentView: View {
 
 // MARK: - Reusable tab-level primitives
 
-/// A bordered card container used by each tab to group related controls.
-/// Dark theme: translucent white fill over the detail panel, thin border.
+/// Sidebar pill: hover = subtle fill, active = slightly stronger fill + lime
+/// icon. Hoisted out of the content view so we can hold per-row hover state.
+private struct SidebarPillRow: View {
+    let icon: String
+    let label: String
+    let isSelected: Bool
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 12))
+                    .foregroundColor(isSelected ? Theme.accent : .white.opacity(0.55))
+                    .frame(width: 18)
+                Text(label)
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                    .foregroundColor(isSelected ? .white : Theme.subtleStrong)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected
+                          ? Theme.sidebarActiveFill
+                          : (isHovered ? Theme.sidebarHoverFill : Color.clear))
+            )
+            .padding(.horizontal, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+    }
+}
+
+/// Card container. Reference design uses `rgba(255,255,255,0.03)` fill +
+/// `rgba(255,255,255,0.08)` border at radius 12. The optional uppercase
+/// "section label" now renders *above* the card, not inside it.
 private struct SettingsCard<Content: View>: View {
     let title: String?
     @ViewBuilder let content: Content
@@ -335,24 +470,26 @@ private struct SettingsCard<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             if let title {
                 Text(title)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
                     .textCase(.uppercase)
                     .tracking(0.6)
                     .foregroundColor(Theme.subtle)
+                    .padding(.horizontal, 4)
+                    .padding(.top, 8)
             }
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
                 content
             }
-            .padding(12)
+            .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: 12)
                     .fill(Theme.cardFill)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
+                        RoundedRectangle(cornerRadius: 12)
                             .strokeBorder(Theme.cardBorder, lineWidth: 0.5)
                     )
             )
@@ -360,7 +497,52 @@ private struct SettingsCard<Content: View>: View {
     }
 }
 
-/// Dark-themed toggle cell — lime dot when on, matching the sidebar accent.
+/// iOS-style pill toggle matching the reference mock: neon-lime gradient
+/// when on, inset charcoal when off, with a radial-highlight knob that
+/// animates between ends.
+private struct IOSToggle: View {
+    let isOn: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack(alignment: isOn ? .trailing : .leading) {
+                Capsule()
+                    .fill(isOn ? AnyShapeStyle(LinearGradient(
+                        colors: [Theme.accent, Theme.accent.opacity(0.87)],
+                        startPoint: .top, endPoint: .bottom
+                    )) : AnyShapeStyle(Color.white.opacity(0.10)))
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(
+                                isOn ? Color.black.opacity(0.25) : Color.white.opacity(0.08),
+                                lineWidth: 0.5
+                            )
+                    )
+                    .shadow(
+                        color: isOn ? Theme.accent.opacity(0.3) : .clear,
+                        radius: 6, y: 2
+                    )
+
+                Circle()
+                    .fill(RadialGradient(
+                        colors: [Color.white, Color(white: 0.95), Color(white: 0.88)],
+                        center: UnitPoint(x: 0.4, y: 0.35),
+                        startRadius: 0, endRadius: 14
+                    ))
+                    .frame(width: 19, height: 19)
+                    .shadow(color: .black.opacity(0.35), radius: 1.5, y: 1)
+                    .padding(2)
+            }
+            .frame(width: 38, height: 23)
+            .animation(.spring(response: 0.26, dampingFraction: 0.7), value: isOn)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Toggle cell — icon tile + label + iOS slider. Adopts the reference
+/// "setting row" pattern (icon square, main label, optional sublabel).
 private struct TabToggle: View {
     let icon: String
     let label: String
@@ -368,32 +550,194 @@ private struct TabToggle: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(Color.white.opacity(0.05))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7)
+                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                    )
                 Image(systemName: icon)
                     .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(isOn ? 0.9 : 0.5))
-                    .frame(width: 16)
-                Text(label)
-                    .font(.system(size: 12, weight: isOn ? .semibold : .medium))
-                    .foregroundColor(.white.opacity(isOn ? 0.95 : 0.7))
-                Spacer(minLength: 0)
-                Circle()
-                    .fill(isOn ? Theme.sidebarFill : Color.white.opacity(0.18))
-                    .frame(width: 7, height: 7)
+                    .foregroundColor(isOn ? Theme.accent : .white.opacity(0.72))
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(isOn ? Theme.sidebarFill.opacity(0.1) : Color.white.opacity(0.03))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 7)
-                    .strokeBorder(isOn ? Theme.sidebarFill.opacity(0.25) : Color.white.opacity(0.08), lineWidth: 0.5)
-            )
+            .frame(width: 28, height: 28)
+
+            Text(label)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.white.opacity(0.92))
+
+            Spacer(minLength: 0)
+
+            IOSToggle(isOn: isOn, action: action)
         }
-        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Reference-style list-of-rows primitives
+
+/// Section label above a card: uppercase, tracked, muted.
+/// Usage: `SectionLabel(L10n.someSection)` then `SettingsListCard { ... }`.
+private struct SectionLabel: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold))
+            .textCase(.uppercase)
+            .tracking(0.6)
+            .foregroundColor(Theme.subtle)
+            .padding(.horizontal, 4)
+            .padding(.top, 6)
+    }
+}
+
+/// Card sized for a vertical list of SettingRow. Uses tight vertical padding
+/// so rows' own 12pt vertical padding drives the row height — matches the
+/// reference mock's `padding: '4px 16px'` row card.
+private struct SettingsListCard<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Theme.cardFill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(Theme.cardBorder, lineWidth: 0.5)
+                )
+        )
+    }
+}
+
+/// A single list row: optional icon tile, label, optional sublabel, control.
+/// `isLast` suppresses the bottom divider so the final row sits flush with the
+/// card's bottom padding.
+private struct SettingRow<Control: View>: View {
+    let icon: String?
+    let label: String
+    let sublabel: String?
+    let isLast: Bool
+    @ViewBuilder let control: () -> Control
+
+    init(
+        icon: String? = nil,
+        label: String,
+        sublabel: String? = nil,
+        isLast: Bool = false,
+        @ViewBuilder control: @escaping () -> Control
+    ) {
+        self.icon = icon
+        self.label = label
+        self.sublabel = sublabel
+        self.isLast = isLast
+        self.control = control
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            if let icon {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(Color.white.opacity(0.05))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                        )
+                    Image(systemName: icon)
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.75))
+                }
+                .frame(width: 28, height: 28)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.white.opacity(0.92))
+                if let sublabel, !sublabel.isEmpty {
+                    Text(sublabel)
+                        .font(.system(size: 11))
+                        .foregroundColor(Theme.subtle)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            control()
+        }
+        .padding(.vertical, 12)
+        .overlay(
+            Rectangle()
+                .fill(Theme.rowDivider)
+                .frame(height: 0.5)
+                .opacity(isLast ? 0 : 1),
+            alignment: .bottom
+        )
+    }
+}
+
+/// Colored dot + title + body, used in the proxy explanation card.
+/// `variant` controls dot color + glyph:
+///   - .pos  → accent-filled, "✓"
+///   - .neg  → muted outline, "✕"
+///   - .hint → muted outline, "i"
+private struct InfoRow: View {
+    enum Variant { case pos, neg, hint }
+    let variant: Variant
+    let title: String
+    let message: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            dot
+            (Text(title + "：")
+                .foregroundColor(.white.opacity(0.9))
+                .font(.system(size: 12, weight: .medium))
+             + Text(message)
+                .foregroundColor(.white.opacity(0.6))
+                .font(.system(size: 12)))
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private var dot: some View {
+        let isPos = variant == .pos
+        ZStack {
+            Circle()
+                .fill(isPos ? Theme.accent : Color.white.opacity(0.06))
+                .overlay(
+                    Circle().strokeBorder(
+                        isPos ? Color.clear : Color.white.opacity(0.12),
+                        lineWidth: 0.5
+                    )
+                )
+            Text(glyph)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(isPos ? Color(red: 0.04, green: 0.04, blue: 0.05) : .white.opacity(0.7))
+        }
+        .frame(width: 16, height: 16)
+        .padding(.top, 1)
+    }
+
+    private var glyph: String {
+        switch variant {
+        case .pos: return "✓"
+        case .neg: return "✕"
+        case .hint: return "i"
+        }
     }
 }
 
@@ -405,10 +749,18 @@ private struct GeneralTab: View {
     @ObservedObject private var codexGate = CodexFeatureGate.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            SettingsCard {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                    TabToggle(icon: "power", label: L10n.launchAtLogin, isOn: launchAtLogin) {
+        VStack(alignment: .leading, spacing: 18) {
+            // Quick toggles — vertical list with dividers, sublabels for each.
+            SectionLabel(L10n.isChinese ? "快速开关" : "Quick Toggles")
+            SettingsListCard {
+                SettingRow(
+                    icon: "power",
+                    label: L10n.launchAtLogin,
+                    sublabel: L10n.isChinese
+                        ? "系统登录时自动运行 MioIsland"
+                        : "Run MioIsland automatically at login"
+                ) {
+                    IOSToggle(isOn: launchAtLogin) {
                         do {
                             if launchAtLogin {
                                 try SMAppService.mainApp.unregister()
@@ -419,7 +771,15 @@ private struct GeneralTab: View {
                             }
                         } catch {}
                     }
-                    TabToggle(icon: "arrow.triangle.2.circlepath", label: L10n.hooks, isOn: hooksInstalled) {
+                }
+                SettingRow(
+                    icon: "arrow.triangle.2.circlepath",
+                    label: L10n.hooks,
+                    sublabel: L10n.isChinese
+                        ? "拦截与注入 Claude CLI 生命周期"
+                        : "Intercept and instrument the Claude CLI lifecycle"
+                ) {
+                    IOSToggle(isOn: hooksInstalled) {
                         if hooksInstalled {
                             HookInstaller.uninstall()
                             hooksInstalled = false
@@ -428,54 +788,214 @@ private struct GeneralTab: View {
                             hooksInstalled = true
                         }
                     }
-                    TabToggle(icon: "terminal.fill", label: L10n.codexSupport, isOn: codexGate.isEnabled) {
+                }
+                SettingRow(
+                    icon: "chevron.left.forwardslash.chevron.right",
+                    label: L10n.codexSupport,
+                    sublabel: L10n.isChinese
+                        ? "启用 Codex CLI 辅助与代码建议"
+                        : "Enable Codex CLI assistance and code suggestions",
+                    isLast: true
+                ) {
+                    IOSToggle(isOn: codexGate.isEnabled) {
                         codexGate.isEnabled.toggle()
                     }
                 }
             }
 
-            SettingsCard(title: L10n.anthropicApiProxy) {
-                AnthropicProxyRow()
+            // Proxy
+            SectionLabel(L10n.anthropicApiProxy)
+            AnthropicProxyRow()
+
+            // Language
+            SectionLabel(L10n.language)
+            SettingsListCard {
+                SettingsLanguageRow(isLast: true)
             }
 
-            SettingsCard(title: L10n.language) {
-                LanguageRow()
-            }
-
-            SettingsCard(title: L10n.accessibility) {
-                AccessibilityRow(isEnabled: AXIsProcessTrusted())
+            // Accessibility
+            SectionLabel(L10n.accessibility)
+            SettingsListCard {
+                SettingsAccessibilityRow(isLast: true)
             }
         }
     }
 }
 
-/// Text field for configuring an HTTP(S) proxy for Anthropic API traffic.
-/// See the explanatory Text below for exact scope.
+/// Proxy input + three "作用于 / 不作用于 / 留空即直连" info rows.
+/// Replaces the old single-paragraph description with the structured
+/// ✓ / ✕ / i rows from the reference mock.
 private struct AnthropicProxyRow: View {
     @AppStorage("anthropicProxyURL") private var proxyURL: String = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            TextField("", text: $proxyURL, prompt: Text(L10n.anthropicApiProxyPlaceholder).foregroundColor(.white.opacity(0.3)))
-                .textFieldStyle(.plain)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(.white.opacity(0.95))
+        VStack(alignment: .leading, spacing: 14) {
+            // SwiftUI's TextField.prompt repeatedly ignores `foregroundColor`
+            // on macOS and falls back to its own secondary-label gray, which
+            // reads almost-black on our dark input fill. Roll our own: a
+            // manually positioned Text, only visible when empty, in a solid
+            // light gray we control.
+            ZStack(alignment: .leading) {
+                if proxyURL.isEmpty {
+                    Text(L10n.anthropicApiProxyPlaceholder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(Color(red: 0.62, green: 0.62, blue: 0.65))
+                        .padding(.horizontal, 12)
+                        .allowsHitTesting(false)
+                }
+                TextField("", text: $proxyURL)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.95))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.black.opacity(0.35))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
+            )
+
+            VStack(alignment: .leading, spacing: 9) {
+                InfoRow(
+                    variant: .pos,
+                    title: L10n.isChinese ? "作用于" : "Applies to",
+                    message: L10n.isChinese
+                        ? "刘海额度条 (api.anthropic.com) 与 MioIsland 启动的所有子进程，包括 Stats 插件的 claude CLI。启动时设置一次 HTTPS_PROXY / HTTP_PROXY / ALL_PROXY，子进程自动继承。"
+                        : "Notch usage bar (api.anthropic.com) and every subprocess spawned by MioIsland, including the Stats plugin's claude CLI. HTTPS_PROXY / HTTP_PROXY / ALL_PROXY are set once at launch and inherited."
+                )
+                InfoRow(
+                    variant: .neg,
+                    title: L10n.isChinese ? "不作用于" : "Does not apply to",
+                    message: L10n.isChinese
+                        ? "CodeLight 同步（始终直连）、第三方插件的 URLSession 调用（走系统代理）。"
+                        : "CodeLight sync (always direct) and third-party plugin URLSession calls (use system proxy)."
+                )
+                InfoRow(
+                    variant: .hint,
+                    title: L10n.isChinese ? "留空即直连" : "Leave empty to disable",
+                    message: L10n.isChinese
+                        ? "无需配置代理时清空此字段即可。"
+                        : "Clear this field when you don't need a proxy."
+                )
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Theme.cardFill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(Theme.cardBorder, lineWidth: 0.5)
+                )
+        )
+    }
+}
+
+/// Settings-tab version of the language picker. The notch-menu version
+/// (LanguageRow in NotchMenuView.swift) expands inline; here we use a
+/// right-aligned Menu so it matches the reference's compact dropdown.
+private struct SettingsLanguageRow: View {
+    let isLast: Bool
+    @State private var current = L10n.appLanguage
+
+    private let options: [(id: String, label: String)] = [
+        ("auto", "Auto / 自动"),
+        ("zh", "简体中文"),
+        ("en", "English"),
+    ]
+
+    private var currentLabel: String {
+        options.first(where: { $0.id == current })?.label ?? "Auto"
+    }
+
+    var body: some View {
+        SettingRow(
+            icon: "globe",
+            label: L10n.language,
+            sublabel: L10n.isChinese
+                ? "更改后重启应用生效"
+                : "Restart the app for changes to take effect",
+            isLast: isLast
+        ) {
+            Menu {
+                ForEach(options, id: \.id) { option in
+                    Button(option.label) {
+                        L10n.appLanguage = option.id
+                        current = option.id
+                    }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(currentLabel)
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.85))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.55))
+                }
                 .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .padding(.vertical, 5)
                 .background(
                     RoundedRectangle(cornerRadius: 7)
-                        .fill(Color.white.opacity(0.05))
+                        .fill(Color.white.opacity(0.06))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 7)
-                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                        .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
                 )
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        }
+    }
+}
 
-            Text(L10n.anthropicApiProxyDescription)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(Color(white: 0.75))
-                .lineSpacing(4)
-                .fixedSize(horizontal: false, vertical: true)
+/// Settings-tab accessibility row: icon + label + sublabel + status pill
+/// (green dot + "已启用" when granted, "启用" button when not).
+private struct SettingsAccessibilityRow: View {
+    let isLast: Bool
+    @State private var isGranted = AXIsProcessTrusted()
+
+    var body: some View {
+        SettingRow(
+            icon: "hand.raised.fill",
+            label: L10n.accessibility,
+            sublabel: L10n.isChinese
+                ? "键盘快捷键与窗口控制需要此权限"
+                : "Required for keyboard shortcuts and window control",
+            isLast: isLast
+        ) {
+            if isGranted {
+                HStack(spacing: 6) {
+                    Circle().fill(Theme.accent).frame(width: 6, height: 6)
+                    Text(L10n.enabled)
+                        .font(.system(size: 11))
+                        .foregroundColor(.white.opacity(0.55))
+                }
+            } else {
+                Button {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    Text(L10n.enable)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Theme.accent))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            isGranted = AXIsProcessTrusted()
         }
     }
 }
@@ -485,7 +1005,6 @@ private struct AnthropicProxyRow: View {
 private struct AppearanceTab: View {
     @ObservedObject private var screenSelector = ScreenSelector.shared
     @AppStorage("showGroupedSessions") private var showGrouped: Bool = false
-    @AppStorage("usePixelCat") private var usePixelCat: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -493,15 +1012,17 @@ private struct AppearanceTab: View {
                 ScreenPickerRow(screenSelector: screenSelector)
             }
 
+            // Session-grouping toggle — sits alone now that the old
+            // "Pixel Cat Mode" lives inside the Notch section's new
+            // three-way Buddy Style picker.
             SettingsCard {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                    TabToggle(icon: "cat", label: L10n.pixelCatMode, isOn: usePixelCat) { usePixelCat.toggle() }
-                    TabToggle(icon: "folder", label: L10n.groupByProject, isOn: showGrouped) { showGrouped.toggle() }
+                TabToggle(icon: "folder", label: L10n.groupByProject, isOn: showGrouped) {
+                    showGrouped.toggle()
                 }
             }
 
-            // Notch customization — theme, font size, visibility,
-            // hardware mode, and the live edit entry button.
+            // Notch customization — theme, buddy style, font size,
+            // visibility, hardware mode, and the live edit entry button.
             SettingsCard(title: L10n.notchSectionHeader) {
                 NotchCustomizationSettingsView()
             }
@@ -563,7 +1084,7 @@ private struct CodeLightTab: View {
                           : "iphone.slash")
                         .font(.system(size: 14))
                         .foregroundColor(syncManager.isEnabled
-                                         ? Theme.sidebarFill
+                                         ? Theme.accent
                                          : Color.white.opacity(0.4))
                         .frame(width: 18)
 
@@ -601,7 +1122,7 @@ private struct CodeLightTab: View {
                         .padding(.vertical, 6)
                         .background(
                             RoundedRectangle(cornerRadius: 7)
-                                .fill(Theme.sidebarFill)
+                                .fill(Theme.accent)
                         )
                     }
                     .buttonStyle(.plain)
@@ -792,7 +1313,7 @@ private struct AboutTab: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(Theme.sidebarFill)
+                .fill(Theme.accent)
         )
     }
 }
@@ -896,7 +1417,7 @@ private struct CmuxConnectionTab: View {
                             .foregroundColor(.black)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(Theme.sidebarFill))
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Theme.accent))
                         }
                         .buttonStyle(.plain)
                         .disabled(testState == .sending)

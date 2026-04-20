@@ -882,7 +882,13 @@ struct CollapsedNotchContent: View {
         return statusDotColor
     }
 
-    /// Status dot color for the left wing
+    /// Status dot color for the left wing.
+    /// Semantic states (working / needsYou / error / done / thinking) stay
+    /// universal — they carry meaning the user reads across themes. Idle
+    /// defers to the current theme's accent so each theme announces itself
+    /// at rest (森林 moss-green, 霓虹东京 hot pink, 落日 coral, etc.),
+    /// and the old `Color.white.opacity(0.3)` hardcode is gone — it was
+    /// invisible on light-bg themes (sunset / sakura / retroArcade).
     private var statusDotColor: Color {
         switch mostUrgentState {
         case .working: return Color(red: 0.4, green: 0.91, blue: 0.98) // cyan
@@ -890,7 +896,7 @@ struct CollapsedNotchContent: View {
         case .error: return Color(red: 0.94, green: 0.27, blue: 0.27) // red
         case .done: return Color(red: 0.29, green: 0.87, blue: 0.5) // green
         case .thinking: return Color(red: 0.7, green: 0.6, blue: 1.0) // purple
-        case .idle: return Color.white.opacity(0.3)
+        case .idle: return NotchPalette.for(notchStore.customization.theme).accent
         }
     }
 
@@ -905,23 +911,29 @@ struct CollapsedNotchContent: View {
                     .shadow(color: effectiveStatusDotColor.opacity(0.5), radius: 3)
                     .opacity(pulsePhase ? 1.0 : 0.5)
 
-                // Buddy icon — honors the showBuddy preference.
+                // Buddy icon — honors the showBuddy preference and the
+                // user's buddy-style pick (pixelCat / emoji). Emoji mode
+                // falls through to pixel cat when Claude Code has no
+                // companion data in ~/.claude.json.
                 if notchStore.customization.showBuddy {
-                    if usePixelCat {
+                    switch notchStore.customization.buddyStyle {
+                    case .pixelCat:
                         PixelCharacterView(state: mostUrgentState)
                             .scaleEffect(0.28)
                             .frame(width: 16, height: 16)
                             .matchedGeometryEffect(id: "crab", in: activityNamespace, isSource: true)
-                    } else if let buddy = buddyReader.buddy {
-                        EmojiPixelView(emoji: buddy.species.emoji, style: .wave)
-                            .scaleEffect(0.30)
-                            .frame(width: 16, height: 16)
-                            .matchedGeometryEffect(id: "crab", in: activityNamespace, isSource: true)
-                    } else {
-                        PixelCharacterView(state: mostUrgentState)
-                            .scaleEffect(0.28)
-                            .frame(width: 16, height: 16)
-                            .matchedGeometryEffect(id: "crab", in: activityNamespace, isSource: true)
+                    case .emoji:
+                        if let buddy = buddyReader.buddy {
+                            EmojiPixelView(emoji: buddy.species.emoji, style: .wave)
+                                .scaleEffect(0.30)
+                                .frame(width: 16, height: 16)
+                                .matchedGeometryEffect(id: "crab", in: activityNamespace, isSource: true)
+                        } else {
+                            PixelCharacterView(state: mostUrgentState)
+                                .scaleEffect(0.28)
+                                .frame(width: 16, height: 16)
+                                .matchedGeometryEffect(id: "crab", in: activityNamespace, isSource: true)
+                        }
                     }
                 }
 
@@ -1114,7 +1126,9 @@ struct CollapsedNotchContent: View {
         }
     }
 
-    /// Badge color based on most urgent state
+    /// Badge color for the "×N" session count. Idle defers to theme accent
+    /// so the "×1" pill also reflects the active theme at rest, instead of
+    /// a hardcoded 30%-white that vanishes on light-bg themes.
     private var badgeColor: Color {
         switch mostUrgentState {
         case .needsYou: return TerminalColors.amber
@@ -1122,7 +1136,7 @@ struct CollapsedNotchContent: View {
         case .working: return TerminalColors.green
         case .thinking: return Color(red: 0.65, green: 0.55, blue: 0.98)
         case .done: return TerminalColors.blue
-        case .idle: return Color.white.opacity(0.3)
+        case .idle: return NotchPalette.for(notchStore.customization.theme).accent
         }
     }
 

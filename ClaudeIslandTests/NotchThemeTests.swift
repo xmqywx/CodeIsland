@@ -44,11 +44,12 @@ final class NotchThemeTests: XCTestCase {
     }
 
     func test_themeRawStringsMatchCaseNames() {
-        XCTAssertEqual(NotchThemeID.classic.rawValue,  "classic")
-        XCTAssertEqual(NotchThemeID.paper.rawValue,    "paper")
-        XCTAssertEqual(NotchThemeID.neonLime.rawValue, "neonLime")
-        XCTAssertEqual(NotchThemeID.cyber.rawValue,    "cyber")
-        XCTAssertEqual(NotchThemeID.mint.rawValue,     "mint")
-        XCTAssertEqual(NotchThemeID.sunset.rawValue,   "sunset")
+        XCTAssertEqual(NotchThemeID.classic.rawValue,      "classic")
+        XCTAssertEqual(NotchThemeID.forest.rawValue,       "forest")
+        XCTAssertEqual(NotchThemeID.neonTokyo.rawValue,    "neonTokyo")
+        XCTAssertEqual(NotchThemeID.sunset.rawValue,       "sunset")
+        XCTAssertEqual(NotchThemeID.retroArcade.rawValue,  "retroArcade")
+        XCTAssertEqual(NotchThemeID.highContrast.rawValue, "highContrast")
+        XCTAssertEqual(NotchThemeID.sakura.rawValue,       "sakura")
     }
 }

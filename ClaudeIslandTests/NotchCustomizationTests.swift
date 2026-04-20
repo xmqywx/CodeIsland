@@ -36,7 +36,7 @@ final class NotchCustomizationTests: XCTestCase {
 
     func test_codable_roundtripPreservesAllFields() throws {
         var original = NotchCustomization.default
-        original.theme = .neonLime
+        original.theme = .neonTokyo
         original.fontScale = .large
         original.showBuddy = false
         original.showUsageBar = false
@@ -54,18 +54,31 @@ final class NotchCustomizationTests: XCTestCase {
         // Older persisted blobs (or ones produced by a hypothetical
         // pre-release) may be missing some fields. Decoding should
         // succeed and fill missing fields with struct defaults.
-        let partial = #"{"theme":"cyber"}"#
+        let partial = #"{"theme":"forest"}"#
         let decoded = try JSONDecoder().decode(
             NotchCustomization.self,
             from: Data(partial.utf8)
         )
-        XCTAssertEqual(decoded.theme, .cyber)
+        XCTAssertEqual(decoded.theme, .forest)
         XCTAssertEqual(decoded.fontScale, .default)
         XCTAssertTrue(decoded.showBuddy)
         XCTAssertTrue(decoded.showUsageBar)
         XCTAssertEqual(decoded.defaultGeometry.maxWidth, 440)
         XCTAssertEqual(decoded.defaultGeometry.horizontalOffset, 0)
         XCTAssertEqual(decoded.hardwareNotchMode, .auto)
+    }
+
+    /// v1 → v2 theme reset (2026-04-20): dropped themes like "paper",
+    /// "cyber", "mint", "rosegold" should fall back to `.classic` rather
+    /// than throwing on decode. Regression guard for the graceful-decode
+    /// behavior added alongside the theme reset.
+    func test_codable_unknownThemeFallsBackToClassic() throws {
+        let legacy = #"{"theme":"rosegold"}"#
+        let decoded = try JSONDecoder().decode(
+            NotchCustomization.self,
+            from: Data(legacy.utf8)
+        )
+        XCTAssertEqual(decoded.theme, .classic)
     }
 
     // MARK: - FontScale

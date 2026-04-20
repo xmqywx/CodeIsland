@@ -77,17 +77,32 @@ final class NativePluginManager: ObservableObject {
             return result?.takeUnretainedValue() as? NSView
         }
 
-        /// Optional panel size hint from the plugin's Info.plist:
-        ///   MioPluginPreferredWidth  (Number, 280..1200)
-        ///   MioPluginPreferredHeight (Number, 180..900)
-        /// Both must be present to take effect. Returns nil when either is
-        /// missing or out of bounds, letting the host fall back to its
-        /// default `(min(screenW*0.48, 620), min(screenH*0.78, 780))`.
+        /// Optional panel size hint. Two ways a plugin can provide one:
+        ///   1. Runtime ObjC method `@objc func preferredPanelSize() -> NSValue`
+        ///      (required for built-in Swift plugins, since they share
+        ///       `Bundle.main` with the host and can't carry their own plist)
+        ///   2. Info.plist keys `MioPluginPreferredWidth` / `MioPluginPreferredHeight`
+        ///      (only consulted for external .bundle plugins — reading them
+        ///       from `Bundle.main` would return the host's values)
+        /// Returns nil when neither path yields a usable size, letting the
+        /// host fall back to its default `(min(screenW*0.48, 620), min(screenH*0.78, 780))`.
         var preferredPanelSize: CGSize? {
-            guard
-                let info = bundle.infoDictionary,
-                let rawW = (info["MioPluginPreferredWidth"] as? NSNumber)?.doubleValue,
-                let rawH = (info["MioPluginPreferredHeight"] as? NSNumber)?.doubleValue
+            // Path 1: runtime selector
+            let sel = NSSelectorFromString("preferredPanelSize")
+            if instance.responds(to: sel),
+               let raw = instance.perform(sel)?.takeUnretainedValue() as? NSValue {
+                let size = raw.sizeValue
+                if size.width >= 280, size.width <= 1200,
+                   size.height >= 180, size.height <= 900 {
+                    return CGSize(width: size.width, height: size.height)
+                }
+            }
+
+            // Path 2: Info.plist — only valid for external bundles
+            guard bundle !== Bundle.main,
+                  let info = bundle.infoDictionary,
+                  let rawW = (info["MioPluginPreferredWidth"] as? NSNumber)?.doubleValue,
+                  let rawH = (info["MioPluginPreferredHeight"] as? NSNumber)?.doubleValue
             else {
                 return nil
             }

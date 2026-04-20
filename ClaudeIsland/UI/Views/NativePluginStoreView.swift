@@ -160,18 +160,29 @@ struct NativePluginStoreView: View {
                 .foregroundColor(.white.opacity(0.45))
 
             HStack(spacing: 8) {
-                TextField("", text: $installURLText, prompt: Text("https://api.miomio.chat/api/i/...").foregroundColor(.white.opacity(0.3)))
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.9))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.06)))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                    )
-                    .disabled(urlInstalling)
+                // SwiftUI's TextField.prompt ignores `foregroundColor` on macOS,
+                // so we overlay our own placeholder Text in a solid light gray.
+                ZStack(alignment: .leading) {
+                    if installURLText.isEmpty {
+                        Text("https://api.miomio.chat/api/i/...")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(Color(red: 0.62, green: 0.62, blue: 0.65))
+                            .padding(.horizontal, 10)
+                            .allowsHitTesting(false)
+                    }
+                    TextField("", text: $installURLText)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.9))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                }
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.06)))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+                .disabled(urlInstalling)
 
                 Button {
                     if let str = NSPasteboard.general.string(forType: .string) {

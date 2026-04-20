@@ -26,6 +26,7 @@ struct NotchCustomization: Codable, Equatable {
     // Appearance
     var theme: NotchThemeID
     var fontScale: FontScale
+    var buddyStyle: BuddyStyle
 
     // Visibility toggles
     var showBuddy: Bool
@@ -44,6 +45,7 @@ struct NotchCustomization: Codable, Equatable {
     init(
         theme: NotchThemeID = .classic,
         fontScale: FontScale = .default,
+        buddyStyle: BuddyStyle = .pixelCat,
         showBuddy: Bool = true,
         showUsageBar: Bool = true,
         hardwareNotchMode: HardwareNotchMode = .auto,
@@ -51,6 +53,7 @@ struct NotchCustomization: Codable, Equatable {
     ) {
         self.theme = theme
         self.fontScale = fontScale
+        self.buddyStyle = buddyStyle
         self.showBuddy = showBuddy
         self.showUsageBar = showUsageBar
         self.hardwareNotchMode = hardwareNotchMode
@@ -80,15 +83,28 @@ struct NotchCustomization: Codable, Equatable {
     // for a Mac app shipping value types to user defaults.)
 
     private enum CodingKeys: String, CodingKey {
-        case theme, fontScale, showBuddy, showUsageBar,
+        case theme, fontScale, buddyStyle, showBuddy, showUsageBar,
              hardwareNotchMode, hoverSpeed, screenGeometries, defaultGeometry,
              maxWidth, horizontalOffset // legacy keys for migration
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.theme = try c.decodeIfPresent(NotchThemeID.self, forKey: .theme) ?? .classic
+        // `try?` because `decodeIfPresent` THROWS when the key exists but the
+        // raw value isn't a case of NotchThemeID — which happens every time
+        // we rename or drop themes (v1 → v2 shipped with 11 renames).
+        self.theme = (try? c.decode(NotchThemeID.self, forKey: .theme)) ?? .classic
         self.fontScale = try c.decodeIfPresent(FontScale.self, forKey: .fontScale) ?? .default
+        // Buddy style is new (v1.1). If absent from the persisted blob, fall
+        // back to the legacy `usePixelCat` AppStorage bool so existing users
+        // see what they saw before the picker shipped.
+        if let decoded = try? c.decode(BuddyStyle.self, forKey: .buddyStyle) {
+            self.buddyStyle = decoded
+        } else if UserDefaults.standard.object(forKey: "usePixelCat") != nil {
+            self.buddyStyle = UserDefaults.standard.bool(forKey: "usePixelCat") ? .pixelCat : .emoji
+        } else {
+            self.buddyStyle = .pixelCat
+        }
         self.showBuddy = try c.decodeIfPresent(Bool.self, forKey: .showBuddy) ?? true
         self.showUsageBar = try c.decodeIfPresent(Bool.self, forKey: .showUsageBar) ?? true
         self.hardwareNotchMode = try c.decodeIfPresent(HardwareNotchMode.self, forKey: .hardwareNotchMode) ?? .auto
@@ -116,31 +132,49 @@ struct NotchCustomization: Codable, Equatable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(theme, forKey: .theme)
         try c.encode(fontScale, forKey: .fontScale)
+        try c.encode(buddyStyle, forKey: .buddyStyle)
         try c.encode(showBuddy, forKey: .showBuddy)
         try c.encode(showUsageBar, forKey: .showUsageBar)
         try c.encode(hardwareNotchMode, forKey: .hardwareNotchMode)
+        try c.encode(hoverSpeed, forKey: .hoverSpeed)
         try c.encode(screenGeometries, forKey: .screenGeometries)
         try c.encode(defaultGeometry, forKey: .defaultGeometry)
     }
 }
 
-/// Identifier for one of the six built-in themes. Raw string values
+/// Which sprite sits next to the status dot in the notch pill.
+/// - `pixelCat`: the 13×11 hand-painted tabby from `PixelCharacterView`.
+///   Reacts to 6 animation states (idle/working/needsYou/…).
+/// - `emoji`: Claude Code companion emoji from `~/.claude.json`
+///   (18 species — duck/cat/owl/…). Falls back to `pixelCat` when no
+///   companion data exists.
+///
+/// NOTE: `neon` was considered (cyberpunk recolor of the pixel cat with
+/// glow + hue wave) but `NeonPixelCatView` is designed for the full-size
+/// loading screen and collapses into a green blob at the notch's 16×16
+/// target. Pulled it from the picker rather than ship broken visuals.
+enum BuddyStyle: String, Codable, CaseIterable, Identifiable {
+    case pixelCat
+    case emoji
+
+    var id: String { rawValue }
+}
+
+/// Identifier for one of the built-in themes. Raw string values
 /// so persisted JSON is stable across code renames.
+///
+/// v2 line-up (2026-04-20): reset to `classic` + six themes designed
+/// via Claude Design (island/project/themes.jsx). Older raw values
+/// persisted from the v1 palette ("paper", "cyber", "mint", etc.) fall
+/// back to `.classic` on decode — see NotchCustomization.init(from:).
 enum NotchThemeID: String, Codable, CaseIterable, Identifiable {
-    // Free themes
     case classic
-    case paper
-    case neonLime
-    case cyber
-    case mint
+    case forest
+    case neonTokyo
     case sunset
-    // Premium themes
-    case rosegold
-    case ocean
-    case aurora
-    case mocha
-    case lavender
-    case cherry
+    case retroArcade
+    case highContrast
+    case sakura
 
     var id: String { rawValue }
 }
