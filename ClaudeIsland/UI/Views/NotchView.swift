@@ -598,9 +598,16 @@ struct NotchView: View {
             // unless the user explicitly opts in. Reason: Codex turns are short and
             // claude-mem–like short-lived child sessions end up triggering constant
             // feedback for things the user didn't initiate.
+            //
+            // Q4 safety net: sessions with no user-visible content at all
+            // (no tool calls, no messages, no summary) are also suppressed.
+            // Catches claude-mem plugin-spawned Claude children that fire
+            // SessionStart + Stop within a second, and any future event
+            // source that delivers malformed / empty hook payloads.
             let codexNotifyOnComplete = UserDefaults.standard.object(forKey: "codexNotifyOnComplete") as? Bool ?? false
             let notifiableSessions = newlyWaitingSessions.filter { session in
-                session.codexTranscriptPath == nil || codexNotifyOnComplete
+                guard !session.hasNoContentYet else { return false }
+                return session.codexTranscriptPath == nil || codexNotifyOnComplete
             }
 
             if !notifiableSessions.isEmpty {

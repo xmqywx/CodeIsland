@@ -324,6 +324,22 @@ struct SessionState: Equatable, Identifiable, Sendable {
     var canInteract: Bool {
         phase.needsAttention
     }
+
+    /// True when the session has produced no user-visible content at all:
+    /// no tool calls, no chat items, no parsed conversation info.
+    ///
+    /// Used as a safety net to suppress notifications (bounce / sound /
+    /// auto-popup) for "empty shell" sessions — typically claude-mem style
+    /// plugin-spawned Claude children that fire SessionStart + Stop within
+    /// seconds and never accept a user prompt. Also protects against any
+    /// future event source that produces malformed / partial hook payloads.
+    var hasNoContentYet: Bool {
+        toolTracker.seenIds.isEmpty
+            && chatItems.isEmpty
+            && conversationInfo.firstUserMessage == nil
+            && conversationInfo.lastMessage == nil
+            && conversationInfo.summary == nil
+    }
 }
 
 // MARK: - Tool Tracker
