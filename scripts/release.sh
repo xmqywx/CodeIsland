@@ -11,6 +11,11 @@
 # server-side issue kept recurring and blocking releases.
 
 set -e
+set -o pipefail  # without this, `xcodebuild ... | tail -1` swallows build
+                 # failures and ships a stale cached binary. v2.2.5 burned
+                 # on exactly this: an unresolved merge conflict caused
+                 # xcodebuild to fail, but `| tail -1` masked the exit
+                 # code so the DMG was built from a 2.2.4 DerivedData cache.
 
 VERSION="${1:?Usage: $0 <version>}"
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
