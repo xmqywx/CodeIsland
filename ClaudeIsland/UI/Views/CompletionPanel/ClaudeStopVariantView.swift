@@ -161,26 +161,7 @@ struct ClaudeStopVariantView: View {
     // MARK: - Panel background
 
     private var panelBackground: some View {
-        RoundedRectangle(cornerRadius: 14)
-            .fill(
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.08, green: 0.09, blue: 0.13),
-                        Color(red: 0.05, green: 0.06, blue: 0.09)
-                    ],
-                    startPoint: .topLeading, endPoint: .bottomTrailing
-                )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.12), Color.white.opacity(0.04)],
-                            startPoint: .top, endPoint: .bottom
-                        ),
-                        lineWidth: 0.6
-                    )
-            )
+        PixelCardBackground(cornerRadius: 14)
     }
 
     // MARK: - Actions
