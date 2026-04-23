@@ -19,12 +19,20 @@ enum SessionFilter {
     /// Filter sessions for display:
     /// 1. Hide probe/telemetry sessions from third-party tools.
     /// 2. Hide rate-limit noise (ended sessions that ran < 30s).
-    /// 3. Cap total count to prevent UI freeze with excessive sessions.
-    static func filterForDisplay(_ sessions: [SessionState]) -> [SessionState] {
+    /// 3. Hide user-blacklisted projects (passed via `isHidden` predicate).
+    /// 4. Cap total count to prevent UI freeze with excessive sessions.
+    static func filterForDisplay(
+        _ sessions: [SessionState],
+        isHidden: (String) -> Bool = { _ in false }
+    ) -> [SessionState] {
         let filtered = sessions.filter { session in
             // Filter probe sessions by cwd
             let cwd = session.cwd
             if probeMarkers.contains(where: { cwd.contains($0) }) {
+                return false
+            }
+            // User-hidden projects
+            if isHidden(cwd) {
                 return false
             }
 

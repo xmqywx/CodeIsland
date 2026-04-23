@@ -827,12 +827,14 @@ struct CollapsedNotchContent: View {
         }
     }
 
-    /// Group sessions by project (cwd), preserving order
+    /// Group sessions by project (cwd), preserving order.
+    /// Skips ended and user-hidden cwds.
     private var sessionsByProject: [[SessionState]] {
         var groups: [[SessionState]] = []
         var seen: [String: Int] = [:]  // cwd -> group index
 
         for session in sessions where session.phase != .ended {
+            if HiddenProjectsStore.shared.isHidden(cwd: session.cwd) { continue }
             if let idx = seen[session.cwd] {
                 groups[idx].append(session)
             } else {
@@ -852,6 +854,7 @@ struct CollapsedNotchContent: View {
     @ObservedObject private var buddyReader = BuddyReader.shared
     @AppStorage("usePixelCat") private var usePixelCat: Bool = false
     @ObservedObject private var notchStore: NotchCustomizationStore = .shared
+    @ObservedObject private var hiddenStore: HiddenProjectsStore = .shared
     private var theme: ThemeResolver { ThemeResolver(theme: notchStore.customization.theme) }
 
     // MARK: - Unattended Task Alert
