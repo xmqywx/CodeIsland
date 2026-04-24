@@ -71,6 +71,26 @@ struct SystemSettingsRow: View {
 private final class KeyableSettingsWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+
+    /// Called to close the window (e.g. by Cmd+W via main-menu File→Close).
+    /// Borderless windows don't get this for free, and Mio Island is an
+    /// accessory app with no main menu anyway, so we also intercept Cmd+W
+    /// in keyDown below. Both paths funnel through here.
+    override func performClose(_ sender: Any?) {
+        close()
+    }
+
+    /// Intercept Cmd+W at the window level. In a normal app Cmd+W routes
+    /// through File→Close Window in the main menu, but Mio Island runs
+    /// as an accessory (no main menu), so the shortcut otherwise beeps.
+    override func keyDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.command),
+           event.charactersIgnoringModifiers == "w" {
+            performClose(nil)
+            return
+        }
+        super.keyDown(with: event)
+    }
 }
 
 @MainActor
@@ -112,7 +132,11 @@ final class SystemSettingsWindow {
             w.setFrameOrigin(NSPoint(x: f.midX - 480, y: f.midY - 360))
         }
 
-        w.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.maximumWindow)))
+        // Keep at normal window level: the settings pane is a regular
+        // workspace, not a HUD. Users want it to sit below other apps when
+        // they focus elsewhere, not to float on top of everything. The
+        // previous `.maximumWindow` level made it shadow the entire OS.
+        w.level = .normal
         NSApplication.shared.activate(ignoringOtherApps: true)
         w.makeKeyAndOrderFront(nil)
         w.isReleasedWhenClosed = false
@@ -1120,7 +1144,7 @@ private struct BehaviorTab: View {
                     TabToggle(icon: "rectangle.compress.vertical", label: L10n.autoCollapseOnMouseLeave, isOn: autoCollapseOnMouseLeave) { autoCollapseOnMouseLeave.toggle() }
                     TabToggle(icon: "rectangle.arrowtriangle.2.inward", label: L10n.compactCollapsed, isOn: compactCollapsed) { compactCollapsed.toggle() }
                     TabToggle(icon: "bell.badge", label: L10n.codexNotifyOnComplete, isOn: codexNotifyOnComplete) { codexNotifyOnComplete.toggle() }
-                    TabToggle(icon: "bolt.badge", label: L10n.completionPanelEnabled,
+                    TabToggle(icon: "sparkles", label: L10n.completionPanelEnabled,
                               isOn: quickReplyEnabled) { quickReplyEnabled.toggle() }
                 }
             }
