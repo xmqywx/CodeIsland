@@ -24,6 +24,10 @@ final class MessageRelay {
     /// Track how many chat items we've already synced per session
     private var syncedItemCounts: [String: Int] = [:]
 
+    /// Last serialized content sent to server, keyed by session+item id.
+    /// Used to detect tool status mutations (running→success) that need re-sync.
+    private var syncedItemContents: [String: [String: String]] = [:]
+
     /// Map local sessionId → server session id
     private var serverSessionIds: [String: String] = [:]
 
@@ -90,6 +94,7 @@ final class MessageRelay {
                 stopAliveTimer(for: sessionId)
                 knownSessionIds.remove(sessionId)
                 syncedItemCounts.removeValue(forKey: sessionId)
+                syncedItemContents.removeValue(forKey: sessionId)
                 serverSessionIds.removeValue(forKey: sessionId)
             }
         }
@@ -101,6 +106,7 @@ final class MessageRelay {
             stopAliveTimer(for: id)
             knownSessionIds.remove(id)
             syncedItemCounts.removeValue(forKey: id)
+            syncedItemContents.removeValue(forKey: id)
         }
     }
 
@@ -233,35 +239,53 @@ final class MessageRelay {
         let isConn = self.connection.isConnected
         Self.logger.info("syncNewMessages: \(localId.prefix(8))... items=\(items.count) synced=\(syncedCount) connected=\(isConn) serverId=\(serverId.prefix(8))...")
 
-        guard items.count > syncedCount else { return }
         guard connection.isConnected else {
             Self.logger.warning("Skipping sync: not connected")
             return
         }
 
-        // Only sync new items
-        let newItems = Array(items.dropFirst(syncedCount))
-        syncedItemCounts[localId] = items.count
-
+        var contentMap = syncedItemContents[localId] ?? [:]
         var sentCount = 0
-        for item in newItems {
-            // Dedup: skip user messages that the phone just injected via cmux — they'd
-            // otherwise round-trip back to the phone as a second copy.
-            if case .user(let text) = item.type,
-               SyncManager.shared.consumePhoneInjection(claudeUuid: localId, text: text) {
-                Self.logger.info("Skipping echo of phone-injected user message")
-                continue
+
+        // Sync new items (count-based)
+        if items.count > syncedCount {
+            let newItems = Array(items.dropFirst(syncedCount))
+            syncedItemCounts[localId] = items.count
+
+            for item in newItems {
+                // Dedup: skip user messages that the phone just injected via cmux — they'd
+                // otherwise round-trip back to the phone as a second copy.
+                if case .user(let text) = item.type,
+                   SyncManager.shared.consumePhoneInjection(claudeUuid: localId, text: text) {
+                    Self.logger.info("Skipping echo of phone-injected user message")
+                    continue
+                }
+                let content = serializeChatItem(item)
+                contentMap[item.id] = content
+                connection.sendMessage(sessionId: serverId, content: content, localId: item.id)
+                sentCount += 1
             }
-            let content = serializeChatItem(item)
-            connection.sendMessage(
-                sessionId: serverId,  // Use server's session ID, not local
-                content: content,
-                localId: item.id
-            )
-            sentCount += 1
         }
 
-        Self.logger.info("Synced \(sentCount)/\(newItems.count) new messages for \(localId.prefix(8))...")
+        // Re-sync mutated tool items (running→success, result populated).
+        // Count-based tracking misses in-place mutations, so we compare content.
+        // Only tool items mutate after initial sync; other types are immutable.
+        for item in items.prefix(syncedCount) {
+            guard case .toolCall = item.type else { continue }
+            let content = serializeChatItem(item)
+            if let prev = contentMap[item.id], prev != content {
+                contentMap[item.id] = content
+                connection.sendMessage(sessionId: serverId, content: content, localId: item.id)
+                sentCount += 1
+                Self.logger.info("Re-synced mutated tool \(item.id.prefix(12))...")
+            }
+        }
+
+        syncedItemContents[localId] = contentMap
+
+        if sentCount > 0 {
+            Self.logger.info("Synced \(sentCount) messages for \(localId.prefix(8))...")
+        }
     }
 
     /// Serialize a ChatHistoryItem to a JSON string for the server.
