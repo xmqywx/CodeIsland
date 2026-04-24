@@ -286,6 +286,12 @@ private struct SystemSettingsContentView: View {
     let onHide: () -> Void
     @State private var tab: SettingsTab
     @State private var isHoveringTitleBar = false
+    /// Observe the theme store so swapping themes re-renders the whole
+    /// settings tree. Without this subscription the body only references
+    /// `Theme.*` (a static enum that reads from the store each call),
+    /// so SwiftUI has no dependency edge and skips invalidation — users
+    /// had to click a sidebar tab to force a re-render.
+    @ObservedObject private var notchStore = NotchCustomizationStore.shared
 
     init(
         initialTab: SettingsTab = .general,
