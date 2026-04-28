@@ -166,6 +166,10 @@ final class CompletionPanelController: NSObject, ObservableObject {
     }
 
     private func onSessionsUpdate(_ sessions: [SessionState]) {
+        // Drop user-hidden cwds before any state derivation — completion panel,
+        // unattended alert, and "needs you" badges all skip blacklisted projects.
+        let sessions = sessions.filter { !HiddenProjectsStore.shared.isHidden(cwd: $0.cwd) }
+
         lastKnownSessions = Dictionary(uniqueKeysWithValues: sessions.map { ($0.stableId, $0) })
 
         let waitingNow = sessions.filter { $0.phase == .waitingForInput }

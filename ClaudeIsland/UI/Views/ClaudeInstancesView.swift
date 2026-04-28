@@ -21,7 +21,16 @@ struct ClaudeInstancesView: View {
     @State private var showBuddyCard: Bool = false
     @AppStorage("usePixelCat") private var usePixelCat: Bool = false
     @ObservedObject private var notchStore: NotchCustomizationStore = .shared
+    @ObservedObject private var hiddenStore: HiddenProjectsStore = .shared
+    /// Pending "hide group" confirmation: set when user clicks the move button.
+    @State private var pendingHide: PendingHide? = nil
     private var theme: ThemeResolver { ThemeResolver(theme: notchStore.customization.theme) }
+
+    private struct PendingHide: Identifiable {
+        let id = UUID()
+        let cwd: String
+        let name: String
+    }
 
     var body: some View {
         if sessionMonitor.instances.isEmpty {
@@ -330,7 +339,8 @@ struct ClaudeInstancesView: View {
     /// Secondary sort: by last user message date (stable - doesn't change when agent responds)
     /// Note: approval requests stay in their date-based position to avoid layout shift
     private var sortedInstances: [SessionState] {
-        SessionFilter.filterForDisplay(sessionMonitor.instances)
+        SessionFilter.filterForDisplay(sessionMonitor.instances,
+                                       isHidden: { hiddenStore.isHidden(cwd: $0) })
         .sorted { a, b in
             let priorityA = phasePriority(a.phase)
             let priorityB = phasePriority(b.phase)
@@ -453,16 +463,20 @@ struct ClaudeInstancesView: View {
                 ForEach(projectGroups) { group in
                     ProjectGroupHeader(
                         group: group,
-                        isCollapsed: collapsedGroups.contains(group.id)
-                    ) {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            if collapsedGroups.contains(group.id) {
-                                collapsedGroups.remove(group.id)
-                            } else {
-                                collapsedGroups.insert(group.id)
+                        isCollapsed: collapsedGroups.contains(group.id),
+                        onToggle: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                if collapsedGroups.contains(group.id) {
+                                    collapsedGroups.remove(group.id)
+                                } else {
+                                    collapsedGroups.insert(group.id)
+                                }
                             }
+                        },
+                        onMoveRequested: {
+                            pendingHide = PendingHide(cwd: group.id, name: group.name)
                         }
-                    }
+                    )
 
                     if !collapsedGroups.contains(group.id) {
                         ForEach(group.sessions) { session in
@@ -483,6 +497,32 @@ struct ClaudeInstancesView: View {
             .padding(.vertical, 2)
         }
         .scrollBounceBehavior(.basedOnSize)
+        .confirmationDialog(
+            pendingHide.map { L10n.isChinese ? "移除「\($0.name)」" : "Hide \"\($0.name)\"" } ?? "",
+            isPresented: Binding(
+                get: { pendingHide != nil },
+                set: { if !$0 { pendingHide = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingHide
+        ) { hide in
+            Button(L10n.isChinese ? "仅本次隐藏" : "Hide for this session") {
+                hiddenStore.dismissForSession(cwd: hide.cwd)
+                pendingHide = nil
+            }
+            Button(
+                L10n.isChinese ? "永久加入黑名单" : "Add to permanent blacklist",
+                role: .destructive
+            ) {
+                hiddenStore.blacklist(cwd: hide.cwd)
+                pendingHide = nil
+            }
+            Button(L10n.isChinese ? "取消" : "Cancel", role: .cancel) {
+                pendingHide = nil
+            }
+        } message: { hide in
+            Text(hide.cwd)
+        }
     }
 
     // MARK: - Actions
@@ -1121,58 +1161,83 @@ struct ProjectGroupHeader: View {
     let group: ProjectGroup
     let isCollapsed: Bool
     let onToggle: () -> Void
+    let onMoveRequested: () -> Void
 
     @State private var isHovered = false
     @ObservedObject private var notchStore: NotchCustomizationStore = .shared
     private var theme: ThemeResolver { ThemeResolver(theme: notchStore.customization.theme) }
 
     var body: some View {
-        Button {
-            onToggle()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                    .notchFont(11, weight: .semibold)
+        HStack(spacing: 6) {
+            Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                .notchFont(11, weight: .semibold)
+                .notchSecondaryForeground()
+                .frame(width: 12)
+
+            Text(group.name)
+                .notchFont(13, weight: .semibold)
+                .opacity(0.8)
+
+            if group.activeCount > 0 {
+                Text("\(group.activeCount) \(L10n.active)")
+                    .notchFont(11, weight: .medium)
                     .notchSecondaryForeground()
-                    .frame(width: 12)
-
-                Text(group.name)
-                    .notchFont(13, weight: .semibold)
-                    .opacity(0.8)
-
-                if group.activeCount > 0 {
-                    Text("\(group.activeCount) \(L10n.active)")
-                        .notchFont(11, weight: .medium)
-                        .notchSecondaryForeground()
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            Capsule()
-                                .fill(theme.overlay.opacity(0.24))
-                        )
-                } else if group.isArchivable {
-                    Text(L10n.archived)
-                        .notchFont(11, weight: .medium)
-                        .notchSecondaryForeground()
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            Capsule()
-                                .fill(theme.overlay.opacity(0.18))
-                        )
-                }
-
-                Spacer()
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule()
+                            .fill(theme.overlay.opacity(0.24))
+                    )
+            } else if group.isArchivable {
+                Text(L10n.archived)
+                    .notchFont(11, weight: .medium)
+                    .notchSecondaryForeground()
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule()
+                            .fill(theme.overlay.opacity(0.18))
+                    )
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isHovered ? theme.overlay.opacity(0.16) : Color.clear)
-            )
+
+            Spacer()
+
+            // Hide-this-group affordance (visible on hover).
+            // Sibling Button (NOT nested inside the toggle's Button) so macOS
+            // SwiftUI hit-testing routes the click here, not to the row toggle.
+            if isHovered {
+                Button {
+                    onMoveRequested()
+                } label: {
+                    Image(systemName: "eye.slash")
+                        .notchFont(11, weight: .medium)
+                        .notchSecondaryForeground()
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.plain)
+                .help(L10n.isChinese ? "移除此项目" : "Hide this project")
+                .transition(.opacity)
+            }
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isHovered ? theme.overlay.opacity(0.16) : Color.clear)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onToggle()
+        }
         .onHover { isHovered = $0 }
+        .contextMenu {
+            Button {
+                onMoveRequested()
+            } label: {
+                Label(L10n.isChinese ? "移除此项目" : "Hide this project",
+                      systemImage: "eye.slash")
+            }
+        }
     }
 }
 

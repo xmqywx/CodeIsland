@@ -872,6 +872,71 @@ private struct GeneralTab: View {
             SettingsListCard {
                 SettingsAccessibilityRow(isLast: true)
             }
+
+            // Hidden projects (cwd blacklist)
+            SectionLabel(L10n.isChinese ? "隐藏的项目" : "Hidden Projects")
+            HiddenProjectsCard()
+        }
+    }
+}
+
+/// Lists user-blacklisted project cwds with per-row unblacklist + clear-all.
+private struct HiddenProjectsCard: View {
+    @ObservedObject private var hidden: HiddenProjectsStore = .shared
+
+    var body: some View {
+        SettingsListCard {
+            if hidden.allBlacklisted.isEmpty {
+                HStack {
+                    Text(L10n.isChinese
+                         ? "暂无隐藏的项目。在通知中心列表中右键或悬停项目分组可隐藏它们。"
+                         : "No hidden projects. Right-click or hover a group in the list to hide it.")
+                        .notchFont(11)
+                        .notchSecondaryForeground()
+                        .multilineTextAlignment(.leading)
+                    Spacer()
+                }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 4)
+            } else {
+                ForEach(Array(hidden.allBlacklisted.enumerated()), id: \.element) { idx, cwd in
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(URL(fileURLWithPath: cwd).lastPathComponent)
+                                .notchFont(13, weight: .medium)
+                            Text(cwd)
+                                .notchFont(11)
+                                .notchSecondaryForeground()
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        Spacer()
+                        Button(L10n.isChinese ? "取消隐藏" : "Unhide") {
+                            hidden.unblacklist(cwd: cwd)
+                        }
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.tint)
+                    }
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 4)
+                    if idx < hidden.allBlacklisted.count - 1 {
+                        Divider().opacity(0.4)
+                    }
+                }
+                Divider().opacity(0.4)
+                HStack {
+                    Spacer()
+                    Button(role: .destructive) {
+                        hidden.clearAll()
+                    } label: {
+                        Text(L10n.isChinese ? "清空全部" : "Clear All")
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.borderless)
+                }
+                .padding(.vertical, 6)
+                .padding(.horizontal, 4)
+            }
         }
     }
 }
