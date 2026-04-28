@@ -13,98 +13,44 @@ struct PluginHeaderButtons: View {
     let viewModel: NotchViewModel
     @ObservedObject private var manager = NativePluginManager.shared
     @ObservedObject private var notchStore: NotchCustomizationStore = .shared
-    @State private var showOverflow = false
 
-    private let maxVisible = 4
-
-    private var visiblePlugins: [NativePluginManager.LoadedPlugin] {
-        Array(manager.loadedPlugins.prefix(maxVisible))
+    /// Plugins shown directly in the header strip — those the user has
+    /// pinned via the Dock window. Order matches `manager.pinnedIds`.
+    /// Stale ids (plugin uninstalled but still in pinnedIds) are skipped
+    /// silently; the slot remains in the Dock UI for re-pinning.
+    private var pinnedHeaderPlugins: [NativePluginManager.LoadedPlugin] {
+        manager.pinnedIds.compactMap { id in
+            manager.loadedPlugins.first(where: { $0.id == id })
+        }
     }
 
-    private var overflowPlugins: [NativePluginManager.LoadedPlugin] {
-        Array(manager.loadedPlugins.dropFirst(maxVisible))
-    }
+    /// True when there's at least one plugin loaded — the Dock is always
+    /// reachable so users can pin/unpin/manage even when the strip is full.
+    private var hasDockable: Bool { !manager.loadedPlugins.isEmpty }
 
     private var theme: ThemeResolver { ThemeResolver(theme: notchStore.customization.theme) }
 
     var body: some View {
-        // Visible icons
-        ForEach(visiblePlugins) { plugin in
+        // Pinned header icons (max 4). Reordering is done in the Dock
+        // popover — a previous attempt at drag-to-reorder directly in the
+        // header strip was removed because SwiftUI macOS drag inside the
+        // notch panel's gesture chain was unreliable. The Dock UI's slots
+        // and list rows already support drag for the same job.
+        ForEach(pinnedHeaderPlugins) { plugin in
             PluginHeaderButton(plugin: plugin, viewModel: viewModel)
         }
 
-        // Overflow "..." button when >4 plugins
-        if !overflowPlugins.isEmpty {
-            HeaderIconButton(icon: "ellipsis", hoverColor: theme.workingColor) {
-                showOverflow.toggle()
-            }
-            .popover(isPresented: $showOverflow, attachmentAnchor: .rect(.bounds), arrowEdge: .trailing) {
-                VStack(spacing: 2) {
-                    ForEach(overflowPlugins) { plugin in
-                        PluginOverflowRow(plugin: plugin) {
-                            showOverflow = false
-                            viewModel.showPlugin(plugin.id)
-                        }
-                    }
-                }
-                .padding(6)
-                .frame(minWidth: 180)
-                .background(theme.overlay)
-            }
-        }
-    }
-}
-
-/// One row in the overflow popover. Whole row (icon + name + trailing
-/// space) is the clickable hit target.
-///
-/// macOS popover contents have aggressive hit-shape clipping — neither
-/// a plain `Button` nor a bare `onTapGesture` on a styled HStack
-/// reliably extend the hit area to the trailing whitespace. The
-/// pattern that does work: a ZStack that explicitly puts a hit-eating
-/// `Color.clear.contentShape(Rectangle())` underneath the visible
-/// content, with `onTapGesture` on the bottom layer. The Color.clear
-/// rectangle takes the full frame and absorbs every tap regardless of
-/// what label sits on top.
-private struct PluginOverflowRow: View {
-    let plugin: NativePluginManager.LoadedPlugin
-    let action: () -> Void
-    @ObservedObject private var notchStore: NotchCustomizationStore = .shared
-    @State private var isHovered = false
-
-    private var theme: ThemeResolver { ThemeResolver(theme: notchStore.customization.theme) }
-
-    var body: some View {
-        ZStack {
-            // Visible background tint on hover
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isHovered ? theme.needsYouColor.opacity(0.18) : Color.clear)
-
-            // Row content
-            HStack(spacing: 10) {
-                Image(systemName: plugin.icon)
-                    .font(.system(size: 12))
-                    .frame(width: 18, alignment: .center)
-                Text(plugin.name)
-                    .font(.system(size: 11.5, weight: .medium))
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            .foregroundColor(theme.primaryText.opacity(isHovered ? 1.0 : 0.8))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .allowsHitTesting(false)  // let taps fall through to the ZStack below
-        }
-        .frame(maxWidth: .infinity)
-        .contentShape(Rectangle())
-        .onTapGesture { action() }
-        .onHover { hovering in
-            isHovered = hovering
-            if hovering {
-                NSCursor.pointingHand.set()
-            } else {
-                NSCursor.arrow.set()
+        // "..." button — opens the Dock as an independent NSPanel window.
+        //
+        // Was previously a SwiftUI `.popover` attached to this button.
+        // Three close-paths in the notch panel kept yanking the popover:
+        // mouse-leave timer, outside-click handler that posts a synthetic
+        // CGEvent into the popover, and hover region transitions. The
+        // standalone window pattern sidesteps all three by living in its
+        // own NSPanel with its own dismissal rules.
+        if hasDockable {
+            HeaderIconButton(icon: "ellipsis", hoverColor: Color.pluginAccent) {
+                PluginDockWindow.shared.show(viewModel: viewModel)
             }
         }
     }
@@ -118,7 +64,7 @@ private struct PluginHeaderButton: View {
     private var theme: ThemeResolver { ThemeResolver(theme: notchStore.customization.theme) }
 
     var body: some View {
-        HeaderIconButton(icon: plugin.icon, hoverColor: theme.needsYouColor) {
+        HeaderIconButton(icon: plugin.icon, hoverColor: Color.pluginAccent) {
             viewModel.showPlugin(plugin.id)
         }
     }
