@@ -34,6 +34,21 @@ struct ClaudeInstancesView: View {
                             .notchFont(11)
                             .notchSecondaryForeground()
                         Spacer()
+
+                        // Quit button — visible escape hatch since the app
+                        // doesn't appear in Force Quit (LSUIElement = true).
+                        Button {
+                            NSApplication.shared.terminate(nil)
+                        } label: {
+                            Image(systemName: "power")
+                                .notchFont(9)
+                                .foregroundColor(Color(red: 1.0, green: 0.4, blue: 0.4).opacity(0.5))
+                                .frame(width: 24, height: 24)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Quit Code Island (Cmd+Option+Shift+Q)")
+
                         Button {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                 viewModel.toggleMenu()
@@ -84,7 +99,7 @@ struct ClaudeInstancesView: View {
                         }
 
                         if notchStore.customization.showUsageBar {
-                            UsageStatsBar(monitor: rateLimitMonitor, totalMinutes: totalSessionMinutes)
+                            UsageStatsBar(monitor: rateLimitMonitor)
                         }
                     }
                     .padding(.trailing, 4)
@@ -210,9 +225,22 @@ struct ClaudeInstancesView: View {
 
     private var emptyState: some View {
         VStack(spacing: 0) {
-            // Top bar with settings
+            // Top bar with quit + settings
             HStack {
                 Spacer()
+
+                Button {
+                    NSApplication.shared.terminate(nil)
+                } label: {
+                    Image(systemName: "power")
+                        .notchFont(9)
+                        .foregroundColor(Color(red: 1.0, green: 0.4, blue: 0.4).opacity(0.5))
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Quit Code Island (Cmd+Option+Shift+Q)")
+
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                         viewModel.toggleMenu()
@@ -262,7 +290,7 @@ struct ClaudeInstancesView: View {
 
                 // Usage stats if available (honors showUsageBar)
                 if notchStore.customization.showUsageBar {
-                    UsageStatsBar(monitor: rateLimitMonitor, totalMinutes: 0)
+                    UsageStatsBar(monitor: rateLimitMonitor)
                         .padding(.top, 4)
                     if codexGate.isEnabled {
                         CodexUsageStatsBar(monitor: codexUsageMonitor)
@@ -281,25 +309,6 @@ struct ClaudeInstancesView: View {
                 emptyFloat = true
             }
         }
-    }
-
-    // MARK: - Stats
-
-    /// Total minutes across all sessions
-    private var totalSessionMinutes: Int {
-        sessionMonitor.instances.reduce(0) { total, session in
-            total + Int(Date().timeIntervalSince(session.createdAt) / 60)
-        }
-    }
-
-    /// Format total time as "Xh Ym" or "Ym"
-    private func formatTotalTime(_ minutes: Int) -> String {
-        if minutes >= 60 {
-            let h = minutes / 60
-            let m = minutes % 60
-            return m > 0 ? "\(h)h\(m)m" : "\(h)h"
-        }
-        return "\(minutes)m"
     }
 
     @StateObject private var rateLimitMonitor = RateLimitMonitor.shared
@@ -1318,8 +1327,6 @@ struct SubagentListView: View {
 
 struct UsageStatsBar: View {
     @ObservedObject var monitor: RateLimitMonitor
-    let totalMinutes: Int
-
     @AppStorage("usageWarningThreshold") private var usageWarningThreshold: Int = 90
     @State private var appear = false
     @State private var pulsePhase = false
@@ -1339,15 +1346,6 @@ struct UsageStatsBar: View {
         return Color(red: 0.29, green: 0.87, blue: 0.5)
     }
 
-    private func formatTime(_ minutes: Int) -> String {
-        if minutes >= 60 {
-            let h = minutes / 60
-            let m = minutes % 60
-            return m > 0 ? "\(h)h\(m)m" : "\(h)h"
-        }
-        return "\(minutes)m"
-    }
-
     var body: some View {
         HStack(spacing: 6) {
             if let info = monitor.rateLimitInfo {
@@ -1365,18 +1363,6 @@ struct UsageStatsBar: View {
                         label: "7d",
                         resetAt: info.sevenDayResetAt
                     )
-                }
-
-                // Divider
-                Rectangle()
-                    .fill(.white.opacity(0.08))
-                    .frame(width: 1, height: 14)
-
-                // Session time
-                if totalMinutes > 0 {
-                    Text(formatTime(totalMinutes))
-                        .notchFont(8, weight: .regular, design: .monospaced)
-                        .notchSecondaryForeground()
                 }
 
                 // Refresh

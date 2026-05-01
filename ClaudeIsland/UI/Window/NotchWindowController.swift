@@ -113,10 +113,50 @@ class NotchWindowController: NSWindowController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             self?.viewModel.performBootAnimation()
         }
+
+        // Start watchdog to auto-recover if main thread hangs with window elevated
+        startWatchdog()
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    // MARK: - Main-thread watchdog
+
+    /// Background timer that pings the main thread every 2 s.
+    /// If the main thread doesn't respond within 3 s the window is
+    /// forced into pass-through mode so a frozen app can't block input.
+    private var watchdogTimer: DispatchSourceTimer?
+    private let watchdogQueue = DispatchQueue(label: "com.codeisland.watchdog", qos: .utility)
+
+    func startWatchdog() {
+        let timer = DispatchSource.makeTimerSource(queue: watchdogQueue)
+        timer.schedule(deadline: .now() + 5, repeating: 2)
+        timer.setEventHandler { [weak self] in
+            self?.pingMainThread()
+        }
+        timer.resume()
+        watchdogTimer = timer
+    }
+
+    private func pingMainThread() {
+        let responded = DispatchSemaphore(value: 0)
+        DispatchQueue.main.async { responded.signal() }
+        let result = responded.wait(timeout: .now() + 3)
+        if result == .timedOut {
+            // Main thread is hung — force window into safe state.
+            // These calls are thread-safe on NSWindow.
+            if let w = window {
+                w.ignoresMouseEvents = true
+                w.level = .mainMenu + 3
+            }
+        }
+    }
+
+    func stopWatchdog() {
+        watchdogTimer?.cancel()
+        watchdogTimer = nil
     }
 
     // MARK: - NotchCustomizationStore integration

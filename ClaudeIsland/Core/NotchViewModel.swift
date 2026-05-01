@@ -300,43 +300,44 @@ class NotchViewModel: ObservableObject {
         }
     }
 
+    /// Dedicated serial queue for CGEvent posting — keeps the main thread
+    /// (and its event stream) free so a slow post can never freeze input.
+    private static let eventPostQueue = DispatchQueue(label: "com.codeisland.viewModel.eventPost", qos: .userInteractive)
+
     /// Re-posts a mouse click at the given screen location so it reaches windows behind us
     private func repostClickAt(_ location: CGPoint) {
-        // Small delay to let the window's ignoresMouseEvents update
+        // Small delay to let the window's ignoresMouseEvents update,
+        // then post on a dedicated queue so the main thread is never blocked.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            // Convert to CGEvent coordinate system (screen coordinates with Y from top-left)
             guard let screen = NSScreen.main else { return }
             let screenHeight = screen.frame.height
             let cgPoint = CGPoint(x: location.x, y: screenHeight - location.y)
 
-            // Save cursor position — CGEvent.post(tap: .cghidEventTap)
-            // physically warps the cursor to mouseCursorPosition.
-            let savedCursorPos = CGEvent(source: nil)?.location
+            Self.eventPostQueue.async {
+                let savedCursorPos = CGEvent(source: nil)?.location
 
-            // Create and post mouse down event
-            if let mouseDown = CGEvent(
-                mouseEventSource: nil,
-                mouseType: .leftMouseDown,
-                mouseCursorPosition: cgPoint,
-                mouseButton: .left
-            ) {
-                mouseDown.post(tap: .cghidEventTap)
-            }
+                if let mouseDown = CGEvent(
+                    mouseEventSource: nil,
+                    mouseType: .leftMouseDown,
+                    mouseCursorPosition: cgPoint,
+                    mouseButton: .left
+                ) {
+                    mouseDown.post(tap: .cghidEventTap)
+                }
 
-            // Create and post mouse up event
-            if let mouseUp = CGEvent(
-                mouseEventSource: nil,
-                mouseType: .leftMouseUp,
-                mouseCursorPosition: cgPoint,
-                mouseButton: .left
-            ) {
-                mouseUp.post(tap: .cghidEventTap)
-            }
+                if let mouseUp = CGEvent(
+                    mouseEventSource: nil,
+                    mouseType: .leftMouseUp,
+                    mouseCursorPosition: cgPoint,
+                    mouseButton: .left
+                ) {
+                    mouseUp.post(tap: .cghidEventTap)
+                }
 
-            // Restore cursor position to prevent unintended cursor jump
-            if let savedCursorPos {
-                CGWarpMouseCursorPosition(savedCursorPos)
-                CGAssociateMouseAndMouseCursorPosition(1)
+                if let savedCursorPos {
+                    CGWarpMouseCursorPosition(savedCursorPos)
+                    CGAssociateMouseAndMouseCursorPosition(1)
+                }
             }
         }
     }

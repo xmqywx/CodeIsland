@@ -223,7 +223,29 @@ private struct SystemSettingsContentView: View {
 
             Spacer()
 
-            // Close button at bottom
+            // Quit app button
+            Button {
+                NSApplication.shared.terminate(nil)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "power")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text(L10n.quit)
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(red: 0.85, green: 0.2, blue: 0.2))
+                )
+                .padding(.horizontal, 12)
+            }
+            .buttonStyle(.plain)
+            .help("Cmd+Option+Shift+Q")
+
+            // Close settings window
             Button {
                 onClose()
             } label: {

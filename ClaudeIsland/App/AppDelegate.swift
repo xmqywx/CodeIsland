@@ -58,6 +58,11 @@ import UserNotifications
         // Initialize CodeLight sync (connects to server if configured)
         _ = SyncManager.shared
 
+        // Global emergency quit shortcut: Cmd+Option+Shift+Q
+        // Works even when the app is frozen because it's registered
+        // with NSEvent before any UI is blocked.
+        registerGlobalQuitShortcut()
+
         // Compute "yesterday" activity report and schedule midnight refresh.
         // Runs off the main thread inside the collector; launch is instant.
         Task { @MainActor in
@@ -87,6 +92,24 @@ import UserNotifications
         for report in reports where !report.isHealthy {
             for issue in report.errors {
                 NSLog("[CodeIsland] Hook health (\(report.agent)): \(issue)")
+            }
+        }
+    }
+
+    // MARK: - Global quit shortcut
+
+    private var quitMonitor: Any?
+
+    /// Register Cmd+Option+Shift+Q as a global hotkey to force-quit the app.
+    /// Uses NSEvent.addGlobalMonitorForEvents which fires even when the app
+    /// isn't focused, providing an escape hatch when the UI is frozen.
+    private func registerGlobalQuitShortcut() {
+        quitMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
+            // Cmd+Option+Shift+Q
+            let requiredFlags: NSEvent.ModifierFlags = [.command, .option, .shift]
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if flags == requiredFlags && event.charactersIgnoringModifiers?.lowercased() == "q" {
+                NSApplication.shared.terminate(nil)
             }
         }
     }

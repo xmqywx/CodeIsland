@@ -93,6 +93,10 @@ class NotchPanel: NSPanel {
         super.sendEvent(event)
     }
 
+    /// Dedicated serial queue for CGEvent posting — keeps the main thread
+    /// (and its event stream) free so a slow post can never freeze input.
+    private static let eventPostQueue = DispatchQueue(label: "com.codeisland.eventPost", qos: .userInteractive)
+
     private func repostMouseEvent(_ event: NSEvent, at screenLocation: NSPoint) {
         // Convert to CGEvent coordinate system (Y from top of screen)
         guard let screen = NSScreen.main else { return }
@@ -110,24 +114,24 @@ class NotchPanel: NSPanel {
 
         let mouseButton: CGMouseButton = event.type == .rightMouseDown || event.type == .rightMouseUp ? .right : .left
 
-        // Save cursor position — CGEvent.post(tap: .cghidEventTap) moves
-        // the physical cursor to mouseCursorPosition, which can warp the
-        // cursor unexpectedly when the panel intercepts stale events.
-        let savedCursorPos = CGEvent(source: nil)?.location
+        // Post on a dedicated queue so the main thread event stream is never blocked.
+        Self.eventPostQueue.async {
+            let savedCursorPos = CGEvent(source: nil)?.location
 
-        if let cgEvent = CGEvent(
-            mouseEventSource: nil,
-            mouseType: mouseType,
-            mouseCursorPosition: cgPoint,
-            mouseButton: mouseButton
-        ) {
-            cgEvent.post(tap: .cghidEventTap)
-        }
+            if let cgEvent = CGEvent(
+                mouseEventSource: nil,
+                mouseType: mouseType,
+                mouseCursorPosition: cgPoint,
+                mouseButton: mouseButton
+            ) {
+                cgEvent.post(tap: .cghidEventTap)
+            }
 
-        // Restore cursor position to prevent unintended cursor jump
-        if let savedCursorPos {
-            CGWarpMouseCursorPosition(savedCursorPos)
-            CGAssociateMouseAndMouseCursorPosition(1)
+            // Restore cursor position to prevent unintended cursor jump
+            if let savedCursorPos {
+                CGWarpMouseCursorPosition(savedCursorPos)
+                CGAssociateMouseAndMouseCursorPosition(1)
+            }
         }
     }
 }
