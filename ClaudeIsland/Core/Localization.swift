@@ -299,6 +299,94 @@ enum L10n {
     static var pairPanelServerLabel: String { tr("Server", "服务器") }
     static var pairPanelDeviceLabel: String { tr("This Mac", "本机") }
     static var pairPanelServerErrorPrefix: String { tr("Connection error:", "连接错误：") }
+
+    // MARK: - Redeem code (Pair Phone redemption flow)
+    //
+    // Mirrors the server contract for /v1/pairing/redeem-code. Mac is
+    // the redemption point now (Apple 3.1.1 forced this off iOS); the
+    // iPhone inherits trial status via DeviceLink at pair time.
+
+    static var redeemSectionTitle: String { tr("Have a redeem code?", "已有兑换码？") }
+    static var redeemSectionSubtitle: String {
+        tr("Activate the trial on this Mac. Paired iPhones inherit it automatically.",
+           "在本 Mac 激活试用,配对的 iPhone 会自动继承。")
+    }
+    static var redeemPlaceholder: String { tr("FREE-XXXXXXXX", "FREE-XXXXXXXX") }
+    static var redeemButton: String { tr("Activate", "激活") }
+    static var redeemButtonSubmitting: String { tr("Activating…", "激活中…") }
+    static var redeemDisabledOffline: String {
+        tr("Connect to the server first to activate.", "请先连接服务器再激活。")
+    }
+    /// Trial-active banner — "已激活(剩余 14 天)" to match iOS App's
+    /// subscription row exactly. Short copy fits on one line in the
+    /// 280pt popup card; expiry date is dropped (caller can show a
+    /// tooltip / detail view if needed). All four banner states use
+    /// the same compact 1-line pattern for visual consistency.
+    static func subscriptionTrialBanner(daysLeft: Int) -> String {
+        if L10n.isChinese {
+            return "已激活(剩余 \(daysLeft) 天)"
+        }
+        return daysLeft == 1
+            ? "Active (1 day left)"
+            : "Active (\(daysLeft) days left)"
+    }
+
+    /// Lifetime/permanent subscription label.
+    static var subscriptionActiveBanner: String {
+        tr("Active", "已激活")
+    }
+
+    /// Trial expired. Banner is red; the redeem disclosure right below
+    /// is the call-to-action — banner doesn't need to repeat the prompt.
+    static var subscriptionExpiredBanner: String {
+        tr("Expired", "已过期")
+    }
+
+    /// No active subscription. Shown when status is .none AND there's
+    /// no recent local redemption record.
+    static var subscriptionNoneBanner: String {
+        tr("Not activated", "未激活")
+    }
+
+    static var subscriptionRefreshTooltip: String {
+        tr("Refresh status", "刷新状态")
+    }
+
+    // Error messages — keys mirror the server's stable `error` field.
+    static var redeemErrorUnauthorized: String {
+        tr("Login expired. Reconnect the server and try again.",
+           "登录态失效,请重新连接服务器后重试。")
+    }
+    static var redeemErrorNotAMac: String {
+        tr("This device isn't recognised as a Mac. Contact support.",
+           "本设备未被识别为 Mac,请联系客服。")
+    }
+    static var redeemErrorInvalidCode: String {
+        tr("Redeem code is invalid.", "兑换码无效。")
+    }
+    static var redeemErrorCodeExhausted: String {
+        tr("This code has been fully redeemed.", "兑换码已被领完。")
+    }
+    static var redeemErrorCodeExpired: String {
+        tr("This code has expired.", "兑换码已过期。")
+    }
+    static var redeemErrorCodeRevoked: String {
+        tr("This code has been revoked.", "此兑换码已被作废。")
+    }
+    static var redeemErrorAlreadyRedeemed: String {
+        tr("This Mac already used this code.", "本 Mac 已使用过这张码。")
+    }
+    static var redeemErrorRateLimited: String {
+        tr("Too many attempts. Please wait an hour and try again.",
+           "失败次数过多,请稍后再试。")
+    }
+    static var redeemErrorServerError: String {
+        tr("Server error. Please try again later.", "服务器繁忙,请稍后重试。")
+    }
+    static var redeemErrorNetwork: String {
+        tr("Network error. Check your connection and try again.",
+           "网络错误,请检查网络后重试。")
+    }
     static var launchPresetsSection: String { tr("Launch Presets", "启动预设") }
     static var addPreset: String { tr("New Preset", "新建预设") }
     static var noPresets: String { tr("No presets yet — tap + to add one", "还没有预设，点击 + 添加") }

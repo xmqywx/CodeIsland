@@ -31,6 +31,42 @@ final class SyncManager: ObservableObject {
     /// (PairPhoneView) can observe it via SyncManager directly.
     @Published private(set) var shortCode: String?
 
+    /// Most recent successful trial redemption on this Mac. Local-only,
+    /// kept as a "just-now" cache so the banner shows instantly after
+    /// `redeemCode` returns — without waiting for the server's socket
+    /// push or a refetch. SubscriptionState (server truth) takes over
+    /// once the server responds.
+    @Published private(set) var lastRedemption: RedemptionRecord?
+
+    /// Server-truth subscription state for this Mac. Populated by:
+    ///   1. fetchSubscription() on connect (GET /v1/subscription/status)
+    ///   2. socket "subscription-updated" event (push from server)
+    ///   3. Local construction from a successful redeem response
+    /// The Pair Phone banner reads this preferentially; lastRedemption
+    /// is only the fallback for the post-redeem instant when the server
+    /// hasn't echoed the new state yet.
+    @Published private(set) var subscription: SubscriptionState?
+
+    /// Persistence keys namespaced by the current server's host. Without
+    /// this, switching from one CodeLight server to another would leave
+    /// the old server's "试用中 · 剩余 3 天" banner showing on the new
+    /// connection. Both keys (redemption + subscription) get the same
+    /// host bucket so they stay aligned.
+    private static let lastRedemptionKeyPrefix = "MioIsland.lastRedemption."
+    private static let subscriptionKeyPrefix = "MioIsland.subscription."
+
+    private func currentRedemptionKey() -> String {
+        return "\(Self.lastRedemptionKeyPrefix)\(serverHost())"
+    }
+
+    private func currentSubscriptionKey() -> String {
+        return "\(Self.subscriptionKeyPrefix)\(serverHost())"
+    }
+
+    private func serverHost() -> String {
+        serverUrl.flatMap { URL(string: $0)?.host?.lowercased() } ?? "unknown"
+    }
+
     /// Text the phone injected into a Claude session via cmux. Used so MessageRelay
     /// can skip re-uploading the same text when it re-appears in the JSONL (dedup).
     /// Keyed by Claude session UUID; entries expire after 60s.
@@ -66,6 +102,12 @@ final class SyncManager: ObservableObject {
         get { UserDefaults.standard.string(forKey: "codelight-server-url") }
         set {
             UserDefaults.standard.set(newValue, forKey: "codelight-server-url")
+            // Re-key the persisted state to the new host so we never
+            // display the previous server's trial state on a fresh
+            // connection. Reloads from the new host's bucket (or clears
+            // when no record exists yet).
+            loadPersistedRedemption()
+            loadPersistedSubscription()
             if let url = newValue, !url.isEmpty {
                 Task { await connectToServer(url: url) }
             } else {
@@ -79,6 +121,8 @@ final class SyncManager: ObservableObject {
         // their own CodeLight server URL in Settings before pairing. This
         // avoids accidentally routing every user's sessions through the
         // author's personal host.
+        loadPersistedRedemption()
+        loadPersistedSubscription()
         if let url = serverUrl, !url.isEmpty {
             Task { await connectToServer(url: url) }
         }
@@ -116,6 +160,15 @@ final class SyncManager: ObservableObject {
                 Task { @MainActor in
                     let ok = LaunchService.shared.launch(presetId: presetId, projectPath: projectPath)
                     Self.logger.info("session-launch from \(requestedBy.prefix(8), privacy: .public): \(ok ? "ok" : "failed")")
+                }
+            }
+
+            // Server pushed a subscription update (redeem-code complete,
+            // IAP renewal, admin grant). Apply it as authoritative —
+            // server is the source of truth for subscription state.
+            conn.onSubscriptionUpdated = { [weak self] state in
+                Task { @MainActor in
+                    self?.applySubscription(state, source: "socket")
                 }
             }
 
@@ -162,6 +215,24 @@ final class SyncManager: ObservableObject {
             // Periodically upload known project paths so the phone can pick from
             // recent projects when launching a session.
             scheduleProjectUploads()
+
+            // Pull current subscription state from the server. Pre-F4
+            // server short-circuits Mac to {status:'none'} — applySubscription
+            // handles that case by keeping any recent local lastRedemption
+            // visible. Post-F4: server returns Mac's own trial state.
+            // Failures are non-fatal: keep prior state, retry next connect.
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    if let state = try await conn.fetchSubscription() {
+                        await MainActor.run {
+                            self.applySubscription(state, source: "fetch")
+                        }
+                    }
+                } catch {
+                    Self.logger.warning("initial fetchSubscription failed: \(error.localizedDescription)")
+                }
+            }
         } catch {
             connectionState = .error(error.localizedDescription)
             Self.logger.error("Sync connection failed: \(error)")
@@ -426,5 +497,127 @@ final class SyncManager: ObservableObject {
         UserDefaults.standard.set(serverUrl, forKey: "codelight-server-url")
         await connectToServer(url: serverUrl)
         Self.logger.info("Paired with \(deviceName) via QR")
+    }
+
+    // MARK: - Redeem code (trial activation)
+
+    /// Activate a trial code on this Mac. Trims + uppercases the input
+    /// then delegates to `ServerConnection.redeemPairingCode`. On
+    /// success persists the record so the banner survives relaunches.
+    /// Throws `RedeemError.unauthorized` (or `.network`) without
+    /// hitting the wire when we have no live connection.
+    func redeemCode(_ raw: String) async throws -> RedemptionRecord {
+        let code = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        guard !code.isEmpty else {
+            throw RedeemError.invalidCode
+        }
+        guard let connection else {
+            // No connection object means no server URL configured. UI
+            // should already block this with its connectionState gate
+            // but throw something sensible just in case.
+            throw RedeemError.unauthorized
+        }
+        let record = try await connection.redeemPairingCode(code)
+        self.lastRedemption = record
+        persistRedemption(record)
+        // Construct a SubscriptionState from the redeem response so the
+        // banner shows the new trial instantly without waiting for the
+        // server's socket push to land. The push (server F3) will overwrite
+        // this with server-computed daysLeft, but the values converge — same
+        // expiresAt, same trial. Without this, there's a 1-3s window where
+        // Mac shows nothing after a successful redeem.
+        let derived = SubscriptionState(fromRedemption: record)
+        applySubscription(derived, source: "redeem")
+        Self.logger.info("Trial activated: \(record.durationDays)d, expires \(record.expiresAt, privacy: .public)")
+        return record
+    }
+
+    /// Force-refresh subscription state from the server. Called by the
+    /// Pair Phone view's .onAppear so opening the panel always shows
+    /// current state — covers the case where the trial expired while
+    /// the panel was closed and there was no socket event to wake us
+    /// (e.g., admin SQL set expiry, no code path emitted the event).
+    /// Failures are swallowed: keep the prior cached state visible
+    /// rather than wiping the banner on a transient network blip.
+    func refreshSubscription() async {
+        Self.logger.info("manual refresh triggered, hasConnection=\(self.connection != nil)")
+        guard let connection else {
+            Self.logger.warning("manual refresh skipped: no connection — SyncManager not connected yet")
+            return
+        }
+        do {
+            if let state = try await connection.fetchSubscription() {
+                applySubscription(state, source: "manual-refresh")
+            } else {
+                Self.logger.warning("manual refresh: fetchSubscription returned nil")
+            }
+        } catch {
+            Self.logger.warning("manual refreshSubscription failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Apply a new subscription state. Server is the source of truth
+    /// post-F4 — whatever it returns wins, including 'none' (no trial)
+    /// and 'expired' (trial ended). Earlier versions had an
+    /// anti-regression guard to keep local state when server returned
+    /// 'none', built for the pre-F4 era when Mac calls were
+    /// short-circuited. F4 is now live; that guard reverses into a
+    /// stale-state trap (admin SQL clears the trial → server returns
+    /// 'none' → guard refuses to clear local → banner stuck on a trial
+    /// that no longer exists). Trust the server.
+    func applySubscription(_ state: SubscriptionState, source: String) {
+        self.subscription = state
+        persistSubscription(state)
+        Self.logger.info("subscription applied: status=\(state.status.rawValue, privacy: .public) daysLeft=\(state.daysLeft ?? -1) source=\(source, privacy: .public)")
+    }
+
+    // MARK: - Persistence helpers
+
+    private func loadPersistedRedemption() {
+        let key = currentRedemptionKey()
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let record = try? JSONDecoder.iso8601().decode(RedemptionRecord.self, from: data) else {
+            self.lastRedemption = nil
+            return
+        }
+        self.lastRedemption = record
+    }
+
+    private func persistRedemption(_ record: RedemptionRecord) {
+        guard let data = try? JSONEncoder.iso8601().encode(record) else { return }
+        UserDefaults.standard.set(data, forKey: currentRedemptionKey())
+    }
+
+    private func loadPersistedSubscription() {
+        let key = currentSubscriptionKey()
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let state = try? JSONDecoder.iso8601().decode(SubscriptionState.self, from: data) else {
+            self.subscription = nil
+            return
+        }
+        self.subscription = state
+    }
+
+    private func persistSubscription(_ state: SubscriptionState) {
+        guard let data = try? JSONEncoder.iso8601().encode(state) else { return }
+        UserDefaults.standard.set(data, forKey: currentSubscriptionKey())
+    }
+}
+
+private extension JSONDecoder {
+    static func iso8601() -> JSONDecoder {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }
+}
+
+private extension JSONEncoder {
+    static func iso8601() -> JSONEncoder {
+        let e = JSONEncoder()
+        e.dateEncodingStrategy = .iso8601
+        return e
     }
 }

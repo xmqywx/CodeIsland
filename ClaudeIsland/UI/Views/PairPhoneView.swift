@@ -322,6 +322,18 @@ private struct QRPairingContentView: View {
             }
             .padding(.top, 4)
         }
+
+        // Redeem code disclosure — collapsed by default. The lime card
+        // surface is visually distinct from the dark panel so the
+        // section uses its own `.limeCard` color tokens (near-black on
+        // black-tinted overlay) instead of the panel's ThemeResolver.
+        Divider()
+            .background(Self.cardText.opacity(0.15))
+            .padding(.top, 4)
+        RedeemCodeSection(
+            syncManager: syncManager,
+            style: .limeCard
+        )
     }
 
     /// Empty state (or edit mode) — lets the user type a server URL inline
@@ -743,6 +755,14 @@ struct PairPhonePanelView: View {
             qrBlock
             shortCodeBlock
             serverInfoRow(url: url)
+            // Redeem code is a side concern — disclosure-collapsed by
+            // default so newcomers aren't visually nagged. Power users
+            // with codes click "已有兑换码？" to expand.
+            Divider().background(theme.border.opacity(0.4))
+            RedeemCodeSection(
+                syncManager: syncManager,
+                style: .darkPanel(theme: theme)
+            )
         }
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 12).fill(theme.overlay.opacity(0.12)))
