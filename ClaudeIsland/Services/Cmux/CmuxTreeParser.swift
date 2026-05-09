@@ -6,6 +6,12 @@
 //  Commands used: `focus terminal`, `activate window`, `select tab`, `input text`.
 //  No cmux socket or System Events needed — only Automation permission for cmux.
 //
+//  All AppleScript dispatch goes through ProcessExecutor (an actor) so the
+//  MainActor never blocks while macOS shows the TCC permission prompt.
+//  Calls that hit a first-time TCC denial (-1743 errAEEventNotPermitted) are
+//  retried once after a short delay so the user can grant permission and have
+//  the action succeed without re-clicking the button.
+//
 
 import AppKit
 import Foundation
@@ -21,29 +27,30 @@ struct CmuxTreeParser {
     // MARK: - Jump
 
     /// Focus the terminal whose working directory matches `cwd`.
-    /// This brings the correct window to front, selects the workspace, and focuses the pane — all in one call.
+    /// Brings the correct window to front, selects the workspace, and focuses
+    /// the pane in one AppleScript call.
     @discardableResult
-    static func jump(cwd: String) -> Bool {
+    static func jump(cwd: String) async -> Bool {
         let script = """
         tell application "cmux"
             set targetTerm to (first terminal whose working directory is "\(escapeAS(cwd))")
             focus targetTerm
         end tell
         """
-        let ok = runAS(script)
+        let ok = await runASAsync(script).isSuccess
         DebugLogger.log("Cmux", "focus terminal cwd=\"\(cwd)\" ok=\(ok)")
         return ok
     }
 
     /// Focus a terminal by its UUID (from session JSON panel id).
     @discardableResult
-    static func jump(panelId: String) -> Bool {
+    static func jump(panelId: String) async -> Bool {
         let script = """
         tell application "cmux"
             focus terminal id "\(escapeAS(panelId))"
         end tell
         """
-        let ok = runAS(script)
+        let ok = await runASAsync(script).isSuccess
         DebugLogger.log("Cmux", "focus terminal id=\"\(panelId.prefix(8))…\" ok=\(ok)")
         return ok
     }
@@ -51,20 +58,20 @@ struct CmuxTreeParser {
     // MARK: - Send Text (for permission approval)
 
     /// Send text to a terminal identified by working directory.
-    static func sendText(_ text: String, toCwd cwd: String) -> Bool {
+    static func sendText(_ text: String, toCwd cwd: String) async -> Bool {
         let script = """
         tell application "cmux"
             set targetTerm to (first terminal whose working directory is "\(escapeAS(cwd))")
             input text "\(escapeAS(text))" to targetTerm
         end tell
         """
-        return runAS(script)
+        return await runASAsync(script).isSuccess
     }
 
     // MARK: - Visibility
 
     /// Check if a session's terminal is currently the focused terminal in the front window.
-    static func isSessionActive(cwd: String) -> Bool {
+    static func isSessionActive(cwd: String) async -> Bool {
         guard isAvailable else { return true }
         let script = """
         tell application "cmux"
@@ -74,48 +81,58 @@ struct CmuxTreeParser {
             return "no"
         end tell
         """
-        let result = runASResult(script)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let result = (await runASAsync(script).output)?.trimmingCharacters(in: .whitespacesAndNewlines)
         return result == "yes"
     }
 
     // MARK: - AppleScript Helpers
 
-    private static func runAS(_ source: String) -> Bool {
-        let p = Process()
-        let errPipe = Pipe()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        p.arguments = ["-e", source]
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError = errPipe
-        do {
-            try p.run()
-            p.waitUntilExit()
-            if p.terminationStatus != 0 {
-                let stderr = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-                DebugLogger.log("Cmux", "AS error: \(stderr.prefix(300))")
+    /// Outcome of an `osascript` call. We only ever care about success vs.
+    /// failure plus the trimmed stdout, so a thin wrapper keeps callers simple.
+    private struct ASResult {
+        let isSuccess: Bool
+        let output: String?
+    }
+
+    /// Run an AppleScript via the shared `ProcessExecutor` actor so the
+    /// MainActor never blocks. Detects the first-time TCC denial
+    /// (errAEEventNotPermitted, -1743) and retries once after a short delay
+    /// so that clicking "允许" in the system prompt produces a successful jump
+    /// without the user needing to re-click the button.
+    private static func runASAsync(_ source: String) async -> ASResult {
+        let result = await ProcessExecutor.shared.runWithResult(
+            "/usr/bin/osascript",
+            arguments: ["-e", source]
+        )
+        switch result {
+        case .success(let pr):
+            return ASResult(isSuccess: true, output: pr.output)
+        case .failure(let err):
+            if isTCCFirstCallDenial(err) {
+                DebugLogger.log("Cmux", "AS first-call TCC denial (-1743) — retrying after 1.5s")
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                let retry = await ProcessExecutor.shared.runWithResult(
+                    "/usr/bin/osascript",
+                    arguments: ["-e", source]
+                )
+                switch retry {
+                case .success(let pr):
+                    return ASResult(isSuccess: true, output: pr.output)
+                case .failure(let retryErr):
+                    DebugLogger.log("Cmux", "AS retry also failed: \(retryErr.localizedDescription.prefix(200))")
+                    return ASResult(isSuccess: false, output: nil)
+                }
             }
-            return p.terminationStatus == 0
-        } catch {
-            return false
+            DebugLogger.log("Cmux", "AS error: \(err.localizedDescription.prefix(300))")
+            return ASResult(isSuccess: false, output: nil)
         }
     }
 
-    private static func runASResult(_ source: String) -> String? {
-        let p = Process()
-        let outPipe = Pipe()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        p.arguments = ["-e", source]
-        p.standardOutput = outPipe
-        p.standardError = FileHandle.nullDevice
-        do {
-            try p.run()
-            let data = outPipe.fileHandleForReading.readDataToEndOfFile()
-            p.waitUntilExit()
-            guard p.terminationStatus == 0 else { return nil }
-            return String(data: data, encoding: .utf8)
-        } catch {
-            return nil
-        }
+    /// Detect the macOS "first call after grant fails with -1743" pattern so
+    /// we know to retry once. Any other failure is treated as a real error.
+    private static func isTCCFirstCallDenial(_ err: ProcessExecutorError) -> Bool {
+        guard case let .executionFailed(_, _, stderr) = err, let stderr else { return false }
+        return stderr.contains("-1743") || stderr.contains("errAEEventNotPermitted")
     }
 
     private static func escapeAS(_ str: String) -> String {

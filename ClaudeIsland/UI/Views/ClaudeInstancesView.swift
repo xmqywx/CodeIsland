@@ -1008,7 +1008,7 @@ struct InstanceRow: View {
         }
 
         DebugLogger.log("AskUser", "Sending '\(index)' to cmux terminal cwd=\(session.cwd)")
-        let sent = CmuxTreeParser.sendText("\(index)\r", toCwd: session.cwd)
+        let sent = await CmuxTreeParser.sendText("\(index)\r", toCwd: session.cwd)
         DebugLogger.log("AskUser", "Sent: \(sent)")
     }
 

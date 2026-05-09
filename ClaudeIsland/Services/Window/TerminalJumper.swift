@@ -241,7 +241,7 @@ actor TerminalJumper {
         DebugLogger.log("Jump", "cmux jump: cwd=\(cwd)")
 
         // One call: focus the terminal whose working directory matches
-        if CmuxTreeParser.jump(cwd: cwd) {
+        if await CmuxTreeParser.jump(cwd: cwd) {
             return true
         }
 

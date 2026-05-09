@@ -41,7 +41,7 @@ struct TerminalVisibilityDetector {
     }
 
     /// Check if a specific session's terminal tab/workspace is currently visible and active
-    static func isSessionTerminalFrontmost(_ session: SessionState) -> Bool {
+    static func isSessionTerminalFrontmost(_ session: SessionState) async -> Bool {
         guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
               let bundleId = frontmostApp.bundleIdentifier else {
             return false
@@ -56,7 +56,7 @@ struct TerminalVisibilityDetector {
 
         // cmux: check workspace
         if termApp.contains("cmux") {
-            return isCmuxSessionActive(session)
+            return await isCmuxSessionActive(session)
         }
 
         // iTerm2: check if current session name contains project dir
@@ -79,8 +79,8 @@ struct TerminalVisibilityDetector {
     }
 
     /// Check if a cmux session's terminal is currently focused in the front window
-    private static func isCmuxSessionActive(_ session: SessionState) -> Bool {
-        return CmuxTreeParser.isSessionActive(cwd: session.cwd)
+    private static func isCmuxSessionActive(_ session: SessionState) async -> Bool {
+        return await CmuxTreeParser.isSessionActive(cwd: session.cwd)
     }
 
     // MARK: - iTerm2
