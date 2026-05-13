@@ -14,7 +14,7 @@ import LightRays from "./reactbits/LightRays"
 
 // Injected at build time by .github/workflows/deploy-landing.yml (VITE_LATEST_VERSION).
 // Falls back to a hardcoded version for local dev / offline builds.
-const LATEST_VERSION = (import.meta.env.VITE_LATEST_VERSION as string | undefined) || "v2.1.6"
+const LATEST_VERSION = (import.meta.env.VITE_LATEST_VERSION as string | undefined) || "v3.0.0"
 const MAC_DMG_URL = `https://github.com/MioMioOS/MioIsland/releases/download/${LATEST_VERSION}/MioIsland-${LATEST_VERSION}.dmg`
 
 const GithubIcon = ({ size = 16 }: { size?: number }) => (
