@@ -21,10 +21,15 @@
 //
 
 import SwiftUI
-import UniformTypeIdentifiers
 
-/// Drag payload type identifier — used by `.draggable` / `.dropDestination`.
-private let pluginDragUTI = UTType.plainText
+// Drag/drop wiring uses SwiftUI's modern Transferable API
+// (.draggable + .dropDestination, macOS 13+). String conforms to
+// Transferable by default, so we send the plugin id as a plain
+// String payload — no UTI registration / NSItemProvider plumbing
+// needed. The old .onDrag/.onDrop pair silently dropped events on
+// macOS because NSItemProvider(object: NSString) registered as
+// "public.utf8-plain-text" but the .onDrop filter (UTType.plainText
+// = "public.plain-text") didn't match through SwiftUI's binding.
 
 extension Color {
     /// Unified accent color for everything plugin-management. Mirrors
@@ -43,7 +48,6 @@ struct PluginDockPopover: View {
 
     @State private var hoveringRowId: String? = nil
     @State private var hoveringSlotIdx: Int? = nil
-    @State private var draggingId: String? = nil
 
     private var theme: ThemeResolver { ThemeResolver(theme: notchStore.customization.theme) }
 
@@ -108,9 +112,7 @@ struct PluginDockPopover: View {
                 DockSlot(
                     index: idx,
                     plugin: pinnedPlugins[idx],
-                    isDropTarget: draggingId != nil && hoveringSlotIdx == idx,
-                    isDraggingThis: draggingId != nil
-                        && pinnedPlugins[idx]?.id == draggingId,
+                    isDropTarget: hoveringSlotIdx == idx,
                     theme: theme,
                     onDropId: { id in handleDrop(id: id, slotIdx: idx) },
                     onUnpin: {
@@ -120,8 +122,7 @@ struct PluginDockPopover: View {
                             }
                         }
                     },
-                    hoveringSlotIdx: $hoveringSlotIdx,
-                    draggingId: $draggingId
+                    hoveringSlotIdx: $hoveringSlotIdx
                 )
             }
         }
@@ -157,7 +158,6 @@ struct PluginDockPopover: View {
                         isPinned: manager.isPinned(plugin.id),
                         slotIndex: manager.pinnedIds.firstIndex(of: plugin.id),
                         atLimit: atLimit,
-                        isDragging: draggingId == plugin.id,
                         hoveringRowId: $hoveringRowId,
                         theme: theme,
                         onTap: {
@@ -175,9 +175,7 @@ struct PluginDockPopover: View {
                             }
                             // else: at limit + not pinned → no-op (the row
                             //       is already dimmed with "已满").
-                        },
-                        onDragBegin: { draggingId = plugin.id },
-                        onDragEnd: { draggingId = nil; hoveringSlotIdx = nil }
+                        }
                     )
                 }
             }
@@ -232,7 +230,6 @@ struct PluginDockPopover: View {
         withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
             manager.movePinned(id: id, toSlot: slotIdx)
         }
-        draggingId = nil
         hoveringSlotIdx = nil
     }
 }
@@ -299,13 +296,11 @@ private struct DockSlot: View {
     let index: Int
     let plugin: NativePluginManager.LoadedPlugin?
     let isDropTarget: Bool
-    let isDraggingThis: Bool
     let theme: ThemeResolver
     let onDropId: (String) -> Void
     let onUnpin: () -> Void
 
     @Binding var hoveringSlotIdx: Int?
-    @Binding var draggingId: String?
 
     @State private var hoverX = false
 
@@ -325,28 +320,20 @@ private struct DockSlot: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 70)
-        .opacity(isDraggingThis ? 0.4 : 1.0)
-        .onDrop(of: [pluginDragUTI], isTargeted: Binding(
-            get: { isDropTarget },
-            set: { isHovering in
-                if isHovering { hoveringSlotIdx = index }
-                else if hoveringSlotIdx == index { hoveringSlotIdx = nil }
-            }
-        )) { providers in
-            guard let provider = providers.first else { return false }
-            _ = provider.loadObject(ofClass: NSString.self) { obj, _ in
-                if let id = obj as? String {
-                    DispatchQueue.main.async { onDropId(id) }
-                }
-            }
+        .dropDestination(for: String.self) { items, _ in
+            // Modern Transferable-based drop. items contains decoded
+            // String payloads — for our plugin reorder use case there's
+            // exactly one. Side-step the macOS NSItemProvider UTI-match
+            // gotcha that plagued the legacy .onDrop path.
+            guard let id = items.first else { return false }
+            onDropId(id)
             return true
+        } isTargeted: { isHovering in
+            if isHovering { hoveringSlotIdx = index }
+            else if hoveringSlotIdx == index { hoveringSlotIdx = nil }
         }
         .if(filled) { view in
-            view.onDrag {
-                draggingId = plugin?.id
-                let provider = NSItemProvider(object: NSString(string: plugin?.id ?? ""))
-                return provider
-            }
+            view.draggable(plugin?.id ?? "")
         }
     }
 
@@ -455,15 +442,12 @@ private struct PluginDockRow: View {
     let isPinned: Bool
     let slotIndex: Int?
     let atLimit: Bool
-    let isDragging: Bool
 
     @Binding var hoveringRowId: String?
 
     let theme: ThemeResolver
 
     let onTap: () -> Void
-    let onDragBegin: () -> Void
-    let onDragEnd: () -> Void
 
     private var canPin: Bool { isPinned || !atLimit }
     private var hovered: Bool { hoveringRowId == plugin.id }
@@ -494,7 +478,7 @@ private struct PluginDockRow: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 6)
-        .opacity(isDragging ? 0.35 : (canPin || isPinned ? 1.0 : 0.45))
+        .opacity(canPin || isPinned ? 1.0 : 0.45)
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
         .onHover { hovering in
@@ -505,11 +489,11 @@ private struct PluginDockRow: View {
                 NSCursor.arrow.set()
             }
         }
-        .if(!isPinned) { view in
-            view.onDrag {
-                onDragBegin()
-                return NSItemProvider(object: NSString(string: plugin.id))
-            }
+        .if(!isPinned && canPin) { view in
+            // Only allow drag from list rows that can actually be pinned —
+            // matches the "已满" dim state on the row. Already-pinned rows
+            // are reordered via the dock slot drag handler, not from here.
+            view.draggable(plugin.id)
         }
     }
 
@@ -632,11 +616,13 @@ final class PluginDockWindow {
         p.isReleasedWhenClosed = false
         p.hidesOnDeactivate = false
         p.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-        // Make the panel draggable from any background area — same trick
-        // SystemSettingsWindow uses. Buttons, list rows, and other
-        // controls still get their click events; only "dead space"
-        // (header, between rows, gaps) initiates a window move.
-        p.isMovableByWindowBackground = true
+        // CRITICAL: keep this `false`. `isMovableByWindowBackground = true`
+        // makes macOS intercept mouse-down on any "background" content as
+        // a window-drag, before SwiftUI's hit-test runs — which kills the
+        // dock slots' `.draggable` modifiers. Symptom: trying to reorder
+        // a pinned plugin instead drags the whole popover around the screen.
+        // The popover is anchored top-right, users don't need to move it.
+        p.isMovableByWindowBackground = false
 
         // Anchor near the top-right under the menu bar — that's where
         // the user's "..." button sits. 14pt right inset matches the
